@@ -84,9 +84,6 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                               metavar='units=val',
                               help='How frequently to poll configuration location for changes (e.g. seconds=3)'
                                    'Overrides the config setting')
-    run_sp.add_argument('--rules',
-                        nargs='*',
-                        help='Limit running to the specified rules')
     run_sp_group.add_argument('--pin-rules',
                               action='store_true',
                               dest='pin_rules',
@@ -111,6 +108,9 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         dest='es_debug_trace',
                         metavar='FILENAME',
                         help='Log ElasticSearch queries as curl commands in specified file')
+    run_sp.add_argument('rules',
+                        nargs='*',
+                        help='Limit running to the specified rules')
 
     # Initialise command
     init_sp = sub_parser.add_parser('init', parents=[config], help='Initialise the reactor indices and templates')
