@@ -1,0 +1,29 @@
+{
+  "reactor_silence": {
+    "properties": {
+      "rule_uuid": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "silence_key": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "alert_uuid": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "until": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      },
+      "exponent": {
+        "type": "integer"
+      },
+      "@timestamp": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+title: Metric Aggregation
+type: object
+required: [metric_agg_key,metric_agg_type]
+
+
+properties:
+  type: {enum: [spike_aggregation, SpikeMatchAggregationRuleType]}
+
+  # From MetricAggregationRuleType
+  metric_agg_type: {enum: ["min", "max", "avg", "sum", "cardinality", "value_count"]}
+  #timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+
+  # From SpikeRuleType
+  spike_height: {type: number}
+  spike_type: {enum: ["up", "down", "both"]}
+  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  use_count_query: {type: boolean}
+  doc_type: {type: string}
+  use_terms_query: {type: boolean}
+  terms_size: {type: integer}
+  alert_on_new_data: {type: boolean}
+  threshold_ref: {type: integer}
+  threshold_cur: {type: integer}
+...

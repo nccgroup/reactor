@@ -1,0 +1,18 @@
+{
+  "reactor_status": {
+    "properties": {
+      "rule_uuid": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "rule_name": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "@timestamp": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      }
+    }
+  }
+}

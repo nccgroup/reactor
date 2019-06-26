@@ -1,0 +1,13 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+title: Metric Aggregation
+type: object
+required: [metric_agg_key,metric_agg_type]
+
+properties:
+  type: {enum: [metric_aggregation, MatchAggregationRuleType]}
+  metric_agg_type: {enum: ["min", "max", "avg", "sum", "cardinality", "value_count"]}
+  #timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+...

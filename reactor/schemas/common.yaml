@@ -1,0 +1,100 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+title: "Common definitions"
+
+definitions:
+
+  timeframe:
+    type: [object, timedelta]
+    additionalProperties: false
+    convert_to: timedelta
+    properties:
+      days: {type: number}
+      weeks: {type: number}
+      hours: {type: number}
+      minutes: {type: number}
+      seconds: {type: number}
+      milliseconds: {type: number}
+      schedule: {type: string}
+
+  # Either a single string OR an array of strings
+  arrayOfStrings:
+    type: [string,array]
+    items: {type: string}
+
+
+  # Either a single string OR an array of strings OR an array of arrays
+  arrayOfStringsOrOtherArrays:
+    type: [string,array]
+    items: {type: [string,array]}
+
+
+  filter:
+    default: {}
+  
+  elasticsearch:
+    $id: "#/properties/elasticsearch"
+    type: object
+    title: "Connection to ElasticSearch"
+    required: [host, port]
+
+    properties:
+      host:
+        type: string
+        title: "ElasticSearch host"
+        examples:
+        - elasticsearch
+        format: hostname
+      port:
+        type: integer
+        title: "ElasticSearch port"
+        examples:
+        - 9200
+
+      username:
+        type: [string, 'null']
+        title: "Basic-auth username"
+        default: ~
+        examples:
+        - es_user
+      password:
+        type: [string, 'null']
+        title: "Basic-auth password"
+        default: ~
+        examples:
+        - changeme
+
+      ssl:
+        type: object
+        title: "TLS connection configuration"
+        required: [enabled]
+
+        properties:
+          enabled:
+            type: boolean
+            title: "Enable TLS connection to ElasticSearch"
+            default: false
+            examples: [true, false]
+
+          verify_certs:
+            type: boolean
+            title: "Verify certificates"
+            default: false
+            examples: [true, false]
+
+          ca_certs:
+            type: string
+            title: "Path to CA certificate file or directory"
+            examples:
+            - /var/ssl/elasticsearch/
+          client_cert:
+            type: string
+            title: "Path to client certificate"
+            examples:
+            - /var/ssl/elasticsearch/client.crt
+          client_key:
+            type: string
+            title: "Path to client private key"
+            examples:
+            - /var/ssl/elasticsearch/client.key
+...

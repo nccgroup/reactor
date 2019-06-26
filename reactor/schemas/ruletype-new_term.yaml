@@ -1,0 +1,16 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+title: New Term
+type: object
+required: []
+
+properties:
+  type: {enum: [new_term, NewTermRuleType]}
+  fields: {$ref: "common.yaml#/definitions/arrayOfStringsOrOtherArrays"}
+  terms_window_size: {$ref: "common.yaml#/definitions/timeframe"}
+  alert_on_missing_field: {type: boolean}
+  use_terms_query: {type: boolean}
+  terms_size: {type: integer}
+...

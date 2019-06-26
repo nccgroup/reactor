@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "rule_uuid": {
+      "type": "keyword"
+    },
+    "silence_key": {
+      "type": "keyword"
+    },
+    "alert_uuid": {
+      "type": "keyword"
+    },
+    "until": {
+      "type": "date",
+      "format": "dateOptionalTime"
+    },
+    "exponent": {
+      "type": "integer"
+    },
+    "@timestamp": {
+      "type": "date",
+      "format": "dateOptionalTime"
+    }
+  }
+}

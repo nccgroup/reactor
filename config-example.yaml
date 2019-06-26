@@ -1,0 +1,53 @@
+
+# The index on the elasticsearch.host which is used for metadata storage
+# This can be an unmapped index, but it is recommended that you run
+# `reactor init` to create the indices and set up the mappings
+index: reactor
+# The alias for all alert indices
+# This is used by Reactor to search through existing alerts
+alert_alias: alerts
+
+
+# Configuration to connect to the writeback ElasticSearch cluster
+elasticsearch:
+  # ElasticSearch Hostname/IP address
+  host: ${ES_HOST:10.25.191.37}
+  # ElasticSearch port
+  port: ${ES_PORT:9200}
+
+  # (optional) basic-auth username and password
+  username: ${ES_USER:monitor}
+  password: ${ES_PASSWORD:letmein}
+
+  # (optional) Connect with TLS to ElasticSearch
+  ssl:
+    enabled: ${USE_SSL:true}
+    verify_certs: false
+#    ca_certs: ""
+#    client_cert: ""
+#    client_key: ""
+
+
+# Specify the location of the rules folder for the FileRuleLoader
+loader.config.rules_folder: rules
+
+## Custom rule loader can be specified and configured
+#loader.type: package.module.MyRuleLoader
+#loader.config: {}
+## Customer rule loader with the loader specified in mappings
+#loader.type: my_loader
+#loader.config: {}
+
+## Mappings allow you to set up/override human friendly names for regularly used classes
+#mappings:
+#  loader:
+#    my_loader: package.module.MyRuleLoader
+#  alerter:
+#    my_alerter: package.module.MyAlerter
+#  ruletype:
+#    my_rule_type: package.module.MyRuleType
+#    frequency: package.module.MyFrequencyRuleType
+#  enhancement:
+#    my_enhancement: package.module.MyEnhancement
+
+

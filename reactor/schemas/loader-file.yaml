@@ -1,0 +1,13 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+title: "FileRuleLoader configuration"
+
+type: object
+additionalProperties: false
+required: [rules_folder]
+
+properties:
+  rules_folder: {type: string}
+  scan_subdirectories:
+    type: boolean
+    default: false

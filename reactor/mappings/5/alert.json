@@ -1,0 +1,34 @@
+{
+  "reactor_alert": {
+    "properties": {
+      "rule_uuid": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "rule_name": {
+        "index": "not_analyzed",
+        "type": "string"
+      },
+      "@timestamp": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      },
+      "alert_time": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      },
+      "match_time": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      },
+      "match_body": {
+        "type": "object",
+        "enabled": "false"
+      },
+      "aggregate_id": {
+        "index": "not_analyzed",
+        "type": "string"
+      }
+    }
+  }
+}

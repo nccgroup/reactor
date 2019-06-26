@@ -1,0 +1,14 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+title: Whitelist
+type: object
+required: [whitelist, compare_key, ignore_null]
+
+properties:
+  type: {enum: [whitelist, WhitelistRuleType]}
+  compare_key: {'items': {'type': 'string'},'type': ['string', 'array']}
+  whitelist: {type: array, items: {type: string}}
+  ignore_null: {type: boolean}
+...

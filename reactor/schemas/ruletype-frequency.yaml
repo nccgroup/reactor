@@ -1,0 +1,20 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+title: Frequency
+type: object
+required: [num_events, timeframe]
+
+properties:
+  type: {enum: [frequency, FrequencyRuleType]}
+  num_events: {type: integer}
+  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  use_count_query: {type: boolean}
+  doc_type: {type: string}
+  use_terms_query: {type: boolean}
+  terms_size: {type: integer}
+  attach_related:
+    type: boolean
+    default: false
+...

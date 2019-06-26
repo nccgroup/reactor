@@ -1,0 +1,15 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+title: Cardinality
+type: object
+required: [cardinality_field, timeframe]
+
+properties:
+  type: {enum: [cardinality, CardinalityRuleType]}
+  max_cardinality: {type: integer}
+  min_cardinality: {type: integer}
+  cardinality_field: {type: string}
+  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+...
