@@ -3,6 +3,7 @@ import croniter
 import datetime
 import dateutil.tz
 import elasticsearch
+import elasticsearch.helpers
 import logging
 import random
 import time
@@ -11,7 +12,7 @@ import traceback
 import reactor.ruletype
 from reactor.loader import Rule, RuleLoader
 from typing import Optional
-from reactor.exceptions import ReactorException
+from reactor.exceptions import ReactorException, QueryException
 from reactor.util import (
     reactor_logger,
     dt_now, dt_to_ts, ts_to_dt, unix_to_dt, pretty_ts,
@@ -95,6 +96,7 @@ class Client(object):
                 res = self.es_client.search(index=index, size=1, body=query,
                                             _source_include=['end_time', 'rule_id'])
             else:
+                # @TODO decide whether to support older versions of ES (probably not)
                 res = self.es_client.deprecated_search(index=index, doc_type=doc_type,
                                                        size=1, body=query, _source_include=['end_time', 'rule_id'])
 
@@ -137,7 +139,7 @@ class Client(object):
             # If buffer_time doesn't bring us past the previous end time, use that instead
             elif rule.previous_end_time and rule.previous_end_time < buffer_delta:
                 start_time = rule.previous_end_time
-                rule.adjust_start_time_for_overlapping_agg_query()
+                rule.adjust_start_time_for_overlapping_agg_query(start_time)
             else:
                 start_time = buffer_delta
 
@@ -186,7 +188,7 @@ class Client(object):
         tmp_end_time = start_time
         while (end_time - start_time) > segment_size:
             tmp_end_time = tmp_end_time + segment_size
-            if not rule.run_query(start_time, tmp_end_time):
+            if not self.run_query(rule, start_time, tmp_end_time):
                 return 0, 0, 0
             rule.cumulative_hits += rule.num_hits
             rule.num_hits = 0
@@ -196,14 +198,14 @@ class Client(object):
         # Guarantee that at least one search search occurs
         if rule.conf('aggregation_query_element'):
             if end_time - tmp_end_time == segment_size:
-                rule.run_query(tmp_end_time, end_time)
+                self.run_query(rule, tmp_end_time, end_time)
                 rule.cumulative_hits += rule.num_hits
             elif (rule.original_start_time - tmp_end_time).total_seconds() == 0:
                 return 0, 0, 0
             else:
                 end_time = tmp_end_time
         else:
-            if not rule.run_query(start_time, end_time):
+            if not self.run_query(rule, start_time, end_time):
                 return 0, 0, 0
             rule.cumulative_hits += rule.num_hits
             rule.type.garbage_collect(end_time)
@@ -221,12 +223,13 @@ class Client(object):
             # If realert is set, silence the rule for that duration
             # Silence is cached by query_key, if it exists
             # Default realert time is 0 seconds
+            match_time = ts_to_dt(dots_get(match, rule.conf('timestamp_field')))
             silence_key = rule.get_query_key_value(match) or '_silence'
-            silenced = self.is_silenced(rule, silence_key)
+            silenced = self.is_silenced(rule, silence_key, match_time)
 
             # If not silenced and there is a realert, silence the rule
             if not silenced and rule.conf('realert'):
-                next_alert, exponent = self.next_alert_time(rule, silence_key, dt_now())
+                next_alert, exponent = self.next_alert_time(rule, silence_key, match_time or dt_now())
                 self.set_realert(rule, silence_key, next_alert, exponent, alert['uuid'])
 
             if rule.conf('run_enhancements_first'):
@@ -273,6 +276,54 @@ class Client(object):
         self.writeback('status', body)
 
         return num_matches, alerts_sent, num_silenced
+
+    def run_query(self, rule: Rule, start_time=None, end_time=None) -> Optional[list]:
+        """ Query for the rule and pass all of the results to the RuleType instance. """
+        start_time = start_time or self.get_index_start(rule.es_client, rule.conf('index'))
+        end_time = end_time or dt_to_ts(dt_now)
+
+        index = get_index(rule, start_time, end_time)
+        complete = False
+        data = None
+
+        # Get the hits in the timeframe, scroll if necessary
+        while not complete:
+            try:
+                if rule.conf('use_count_query'):
+                    data = rule.get_hits_count(start_time, end_time, index)
+                elif rule.conf('use_terms_query'):
+                    data = rule.get_hits_terms(start_time, end_time, index, rule.conf('query_key'))
+                elif rule.conf('aggregation_query_element'):
+                    data = rule.get_hits_aggregation(start_time, end_time, index, rule.conf('query_key'))
+                else:
+                    data = rule.get_hits(start_time, end_time, index)
+                    if data:
+                        old_len = len(data)
+                        data = rule.remove_duplicate_events(data)
+                        rule.num_duplicates += old_len - len(data)
+            except QueryException as e:
+                self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query})
+                return None
+
+            # There was an exception while querying
+            if data is None:
+                return []
+            elif data:
+                if rule.conf('use_count_query'):
+                    rule.type.add_count_data(data)
+                elif rule.conf('use_terms_query'):
+                    rule.type.add_terms_data(data)
+                elif rule.conf('aggregation_query_element'):
+                    rule.type.add_aggregation_data(data)
+                else:
+                    rule.type.add_data(data)
+
+            # We are complete if we don't have a scroll id or num of hits is equal to total hits
+            complete = not (rule.scroll_id and rule.num_hits < rule.total_hits)
+
+        # Tidy up scroll_id (after scrolling is finished)
+        rule.scroll_id = None
+        return data
 
     def test_rule(self, rule: Rule, end_time, start_time=None):
         try:
@@ -344,9 +395,10 @@ class Client(object):
             reactor_logger.info('Sent %s pending alerts at %s', alerts_sent, pretty_ts(dt_now()))
 
     def handle_config_changes(self):
-        # Only load if
+        # If already loaded and pinned
         if self.loader.loaded and self.args['pin_rules']:
             return
+
         if not self.loader.loaded:
             reactor_logger.info('Loading rules')
         else:
@@ -415,10 +467,11 @@ class Client(object):
             self.handle_uncaught_exception(e, rule)
         else:
             old_start_time = pretty_ts(rule.original_start_time, rule.conf('use_local_time'))
-            reactor_logger.info('Ran %s from %s to %s: %s query hits (%s already seen), %s matches, '
-                                '%s alerts sent (%s silenced)',
-                                rule.name, old_start_time, pretty_ts(end_time, rule.conf('use_local_time')),
-                                rule.cumulative_hits, rule.num_duplicates, num_matches, alerts_sent, num_silenced)
+            reactor_logger.log(logging.INFO if alerts_sent else logging.DEBUG,
+                               'Ran %s from %s to %s: %s query hits (%s already seen), %s matches, '
+                               '%s alerts sent (%s silenced)',
+                               rule.name, old_start_time, pretty_ts(end_time, rule.conf('use_local_time')),
+                               rule.cumulative_hits, rule.num_duplicates, num_matches, alerts_sent, num_silenced)
 
             if next_run < datetime.datetime.utcnow():
                 # We were processing for longer than our refresh interval
@@ -433,6 +486,7 @@ class Client(object):
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run
+        # @TODO potentially add next_start_time/next_run_time/next_min_start_time in method parameters
         if rule.conf('limit_execution') and rule.next_start_time:
             self.scheduler.modify_job(job_id=rule.hash, next_run_time=rule.next_run_time)
             # If we are preventing covering non-scheduled time periods, reset min_start_time and previous_end_time
@@ -454,7 +508,7 @@ class Client(object):
                 continue
 
             # If the original rule is missing, keep alert for later if rule reappears
-            rule = self.loader.get(rule_uuid)
+            rule = self.loader.rules.get(rule_uuid)
             if not rule:
                 continue
 
@@ -475,7 +529,7 @@ class Client(object):
                             rule.current_aggregate_id.pop(qk)
                             break
 
-                # @TODO No need to delete as we will be overriding exiting id
+                # @TODO No need to delete as we will be overriding existing id
 
         for rule in self.loader:
             if rule.agg_matches:
@@ -497,7 +551,8 @@ class Client(object):
         """ Collect the garbage after running a rule. """
         now = dt_now()
         buffer_time = rule.conf('buffer_time') + rule.conf('query_delay')
-        # @TODO clear up the silence lookup in writeback elasticsearch
+
+        # Clear up the silence cache
         if rule.uuid in self.silence_cache:
             stale_silences = []
             for _id, (timestamp, _, _) in self.silence_cache[rule.uuid].items():
@@ -505,6 +560,20 @@ class Client(object):
                     stale_silences.append(_id)
                     # @TODO Run a final update on the silenced alert
             map(self.silence_cache[rule.uuid].pop, stale_silences)
+
+        # Clear up the silence index in the writeback elasticsearch
+        res = self.es_client.search(index=self.get_writeback_index('silence'), doc_type='_doc', body={
+            'query': {'bool': {'must': [
+                {'term': {'rule_uuid': rule.uuid}},
+                {'range': {'until': {'lt': dt_to_ts(now - buffer_time)}}}
+            ]}}
+        }, _source=False, size=1000)
+        elasticsearch.helpers.bulk(self.es_client, [{
+            '_op_type': 'delete',
+            '_index': self.get_writeback_index('silence'),
+            '_type': '_doc',
+            '_id': hit['_id'],
+        } for hit in res['hits']['hits']])
 
         # Remove events from rules that are outside of the buffer timeframe
         stale_hits = []
@@ -768,6 +837,7 @@ class Client(object):
             reactor_logger.info('Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s',
                                 rule.name, agg_id, aggregation_key_value, alert_time)
 
+        # @TODO update this
         alert_body = self.get_alert_body(match, rule, False, alert_time)
         if agg_id:
             alert_body['aggregate_id'] = agg_id
@@ -806,12 +876,13 @@ class Client(object):
         self.silence_cache[rule.uuid][silence_cache_key] = (until, exponent, alert_uuid)
         return self.writeback('silence', body)
 
-    def is_silenced(self, rule: Rule, silence_key=None):
+    def is_silenced(self, rule: Rule, silence_key=None, timestamp=None):
         """ Checks if a rule is silenced. Return false on exception. """
+        timestamp = timestamp or dt_now()
         cache_key = silence_key or '_silence'
         self.silence_cache.setdefault(rule.uuid, {})
         if cache_key in self.silence_cache[rule.uuid]:
-            return dt_now() < self.silence_cache[rule.uuid][cache_key][0]
+            return timestamp < self.silence_cache[rule.uuid][cache_key][0]
 
         # In debug/test mode we don't populate from Reactor status index
         if self.mode in ['debug', 'test']:
@@ -843,7 +914,7 @@ class Client(object):
                 exponent = res['hits']['hits'][0]['_source'].get('exponent', 0)
                 alert_uuid = res['hits']['hits'][0]['_source'].get('alert_uuid')
                 self.silence_cache[rule.uuid][cache_key] = (ts_to_dt(until_ts), exponent, alert_uuid)
-                return dt_now() < ts_to_dt(until_ts)
+                return timestamp < ts_to_dt(until_ts)
 
             return False
 
@@ -861,6 +932,7 @@ class Client(object):
         self.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
 
         if rule.conf('disable_rule_on_error'):
+            # @TODO implement rule disabling
             self.loader.disabled(rule)
             self.scheduler.remove_job(job_id=rule.hash)
             reactor_logger.info('Rule %s disabled', rule.name)
@@ -879,10 +951,16 @@ class Client(object):
         for key in keys:
             index = get_index(rule, start_time, end_time)
 
-            hits_terms = rule.get_hits_terms(start_time, end_time, index, key, qk, number)
+            try:
+                hits_terms = rule.get_hits_terms(start_time, end_time, index, key, qk, number)
+            except QueryException as e:
+                self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query})
+                hits_terms = None
+
             if hits_terms is None:
                 top_events_count = {}
             else:
+                # @TODO convert this from py2 to py3
                 buckets = hits_terms.values()[0]
                 # get_hits_terms adds to num_hits, bu we don't want to count these
                 rule.num_hits -= len(buckets)
@@ -921,3 +999,27 @@ class Client(object):
         if wait >= rule.conf('exponential_realert'):
             return timestamp + rule.conf('exponential_realert'), exponent - 1
         return timestamp + wait, exponent
+
+    def get_index_start(self, index: str, timestamp_field: str = '@timestamp') -> str:
+        """
+        Query for one result sorted by timestamp to find the beginning of the index.
+        :param index: The index of which to find the earliest event
+        :param timestamp_field: The field where the timestamp is stored
+        :return: Timestamp of the earliest event
+        """
+        query = {'sort': {timestamp_field: {'ord': 'asc'}}}
+        try:
+            if self.es_client.es_version_at_least(6):
+                res = self.es_client.search(index=index, size=1, body=query,
+                                            _source_includes=[timestamp_field], ignore_unavailable=True)
+            else:
+                res = self.es_client.search(index=index, size=1, body=query,
+                                            _source_include=[timestamp_field], ignore_unavailable=True)
+        except elasticsearch.ElasticsearchException as e:
+            # An exception was raised, return a date before the epoch
+            self.handle_error("Elasticsearch query error: %s" % str(e), {'index': index, 'query': query})
+            return '1969-12-30T00:00:00Z'
+        if len(res['hits']['hits']) == 0:
+            # Index is completely empty, return a date before the epoch
+            return '1969-12-30T00:00:00Z'
+        return res['hits']['hits'][0][timestamp_field]

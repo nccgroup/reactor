@@ -1,11 +1,10 @@
 import copy
 import datetime
 import elasticsearch
-import hashlib
 
 import reactor.enhancement
 from typing import List, Optional
-from reactor.exceptions import ReactorException
+from reactor.exceptions import ReactorException, QueryException
 from reactor.util import (
     generate_id,
     dots_get, dots_set,
@@ -13,7 +12,7 @@ from reactor.util import (
     reactor_logger,
     dt_now, pretty_ts,
     ts_to_dt, dt_to_ts, unix_to_dt, unixms_to_dt, dt_to_unix, dt_to_unixms, ts_to_dt_with_format, dt_to_ts_with_format,
-    total_seconds, add_raw_postfix, get_index, get_index_start,
+    total_seconds, add_raw_postfix,
 )
 from reactor.ruletype import RuleType
 from reactor.kibana import filters_from_kibana
@@ -184,7 +183,7 @@ class Rule(object):
                 'rule_name': self.name,
                 'match_data': data,
                 'match_body': match,
-                'alert_info': [alerter.get_info() for alerter in self.type.alerters],
+                'alert_info': [alerter.get_info() for alerter in self.alerters],
                 'alert_time': alert_time}
 
         match_time = dots_get(match, self.conf('timestamp_field'))
@@ -334,6 +333,7 @@ class Rule(object):
     def get_hits(self, start_time, end_time, index: str) -> Optional[list]:
         """
         Query ElasticSearch for the given rule and return the processed results.
+        :raises: reactor.exceptions.QueryException
         """
         query = self.get_query(self.conf('filter'), start_time, end_time,
                                timestamp_field=self.conf('timestamp_field'))
@@ -382,8 +382,7 @@ class Rule(object):
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
                 e = str(e)[:1024] + '... (%d characters removed)' % (len(str(e)) - 1024)
-            self.handle_error('Error running query: %s' % e, {'rule': self.name, 'query': query})
-            return None
+            raise QueryException(e, query=query)
 
         hits = res['hits']['hits']
 
@@ -396,20 +395,20 @@ class Rule(object):
                 hits = hits[:(self.max_hits % self.conf('max_query_size'))]
             self.num_hits = self.max_hits
             self.scroll_id = None
-            reactor_logger.info('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
-                                self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
-                                self.num_hits, len(hits), self.total_hits)
+            reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
+                                 self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
+                                 self.num_hits, len(hits), self.total_hits)
             reactor_logger.warning('Maximum hits reached (%s hits of %s total hits), '
                                    'this could trigger false positives alerts', self.max_hits, self.total_hits)
         elif self.total_hits > self.conf('max_query_size'):
-            reactor_logger.info('Queried rule %s from %s to %s: %s / %s hits (%s total hits) (scrolling...)',
-                                self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
-                                self.num_hits, len(hits), self.total_hits)
+            reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits) (scrolling...)',
+                                 self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
+                                 self.num_hits, len(hits), self.total_hits)
             self.scroll_id = res['_scroll_id']
         else:
-            reactor_logger.info('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
-                                self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
-                                self.num_hits, len(hits), self.total_hits)
+            reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
+                                 self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
+                                 self.num_hits, len(hits), self.total_hits)
 
         hits = self.process_hits(hits)
 
@@ -435,13 +434,12 @@ class Rule(object):
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
                 e = str(e)[:1024] + '... (%d characters removed)' % (len(str(e)) - 1024)
-            self.handle_error('Error running query: %s' % e, {'rule': self.name, 'query': query})
-            return None
+            raise QueryException(e, query=query)
 
         self.num_hits += res['count']
         lt = self.conf('use_local_time')
-        reactor_logger.info('Queried rule %s from %s to %s: %s hits', self.name,
-                            pretty_ts(start_time, lt), pretty_ts(end_time, lt), res['count'])
+        reactor_logger.debug('Queried rule %s from %s to %s: %s hits', self.name,
+                             pretty_ts(start_time, lt), pretty_ts(end_time, lt), res['count'])
 
         return {end_time: res['count']}
 
@@ -487,8 +485,7 @@ class Rule(object):
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
                 e = str(e)[:1024] + '... (%d characters removed)' % (len(str(e)) - 1024)
-            self.handle_error('Error running query: %s' % e, {'rule': self.name, 'query': query})
-            return None
+            raise QueryException(e, query=query)
 
         if 'aggregations' not in res:
             return {}
@@ -499,8 +496,8 @@ class Rule(object):
 
         self.num_hits += len(buckets)
         lt = self.conf('use_local_time')
-        reactor_logger.info('Queried rule %s from %s to %s: %s buckets', self.name,
-                            pretty_ts(start_time, lt), pretty_ts(end_time, lt), len(buckets))
+        reactor_logger.debug('Queried rule %s from %s to %s: %s buckets', self.name,
+                             pretty_ts(start_time, lt), pretty_ts(end_time, lt), len(buckets))
 
         return {end_time: buckets}
 
@@ -527,8 +524,7 @@ class Rule(object):
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
                 e = str(e)[:1024] + '... (%d characters removed)' % (len(str(e)) - 1024)
-            self.handle_error('Error running query: %s' % e, {'rule': self.name, 'query': query})
-            return None
+            raise QueryException(e, query=query)
 
         if 'aggregations' not in res:
             return {}
@@ -583,47 +579,3 @@ class Rule(object):
             processed_hits.append(hit['_source'])
 
         return processed_hits
-
-    def run_query(self, start_time=None, end_time=None) -> Optional[list]:
-        """ Query for the rule and pass all of the results to the RuleType instance. """
-        start_time = start_time or get_index_start(self.es_client, self.conf('index'))
-        end_time = end_time or dt_to_ts(dt_now)
-
-        index = get_index(self, start_time, end_time)
-        complete = False
-        data = None
-
-        # Get the hits in the timeframe, scroll if necessary
-        while not complete:
-            if self.conf('use_count_query'):
-                data = self.get_hits_count(start_time, end_time, index)
-            elif self.conf('use_terms_query'):
-                data = self.get_hits_terms(start_time, end_time, index, self.conf('query_key'))
-            elif self.conf('aggregation_query_element'):
-                data = self.get_hits_aggregation(start_time, end_time, index, self.conf('query_key'))
-            else:
-                data = self.get_hits(start_time, end_time, index)
-                if data:
-                    old_len = len(data)
-                    data = self.remove_duplicate_events(data)
-                    self.num_duplicates += old_len - len(data)
-
-            # There was an exception while querying
-            if data is None:
-                return []
-            elif data:
-                if self.conf('use_count_query'):
-                    self.type.add_count_data(data)
-                elif self.conf('use_terms_query'):
-                    self.type.add_terms_data(data)
-                elif self.conf('aggregation_query_element'):
-                    self.type.add_aggregation_data(data)
-                else:
-                    self.type.add_data(data)
-
-            # We are complete if we don't have a scroll id or num of hits is equal to total hits
-            complete = not (self.scroll_id and self.num_hits < self.total_hits)
-
-        # Tidy up scroll_id (after scrolling is finished)
-        self.scroll_id = None
-        return data

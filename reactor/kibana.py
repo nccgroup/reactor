@@ -104,6 +104,7 @@ def get_dashboard(rule, db_name):
     query = {'query': {'term': {'_id': db_name}}}
     try:
         # TODO use doc_type = _doc
+        # @TODO decide whether to support older versions of ES (probably not)
         res = es.deprecated_search(index='kibana-int', doc_type='dashboard', body=query, _source_include=['dashboard'])
     except elasticsearch.ElasticsearchException as e:
         raise ReactorException("Error querying for dashboard: %s" % e)

@@ -201,7 +201,7 @@ def perform_hits(config: dict, args: dict) -> int:
         rule.set_conf('segment_size', args['timeframe'])
         rule.max_hits = args['max_hits']
 
-        hits = rule.run_query(start_time, end_time)
+        hits = client.run_query(rule, start_time, end_time)
         alerter.alert([{'match_body': hit} for hit in hits])
 
     return 0

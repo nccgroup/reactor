@@ -56,9 +56,9 @@ def parse_timestamp(value: str, ts_format: str = '%Y-%m-%dT%H:%M:%S') -> datetim
 
 
 class RangeChoice(object):
-    def __init__(self, min, max):
-        self.min = min
-        self.max = max
+    def __init__(self, min_val, max_val):
+        self.min = min_val
+        self.max = max_val
 
     def __contains__(self, item):
         return self.min <= item <= self.max
@@ -576,29 +576,3 @@ def get_index(rule, start_time=None, end_time=None):
             return index[:format_start] + '*' + index[format_end:]
     else:
         return index
-
-
-def get_index_start(es_client: ElasticSearchClient, index: str, timestamp_field: str = '@timestamp') -> str:
-    """
-    Query for one result sorted by timestamp to find the beginning of the index.
-    :param es_version: Semantic version of ElasticSearch
-    :param index: The index of which to find the earliest event
-    :param timestamp_field: The field where the timestamp is stored
-    :return: Timestamp of the earliest event
-    """
-    query = {'sort': {timestamp_field: {'ord': 'asc'}}}
-    try:
-        if es_client.es_version_at_least(6):
-            res = es_client.search(index=index, size=1, body=query,
-                                        _source_includes=[timestamp_field], ignore_unavailable=True)
-        else:
-            res = es_client.search(index=index, size=1, body=query,
-                                        _source_include=[timestamp_field], ignore_unavailable=True)
-    except elasticsearch.ElasticsearchException as e:
-        # An exception was raised, return a date before the epoch
-        self.handle_error("Elasticsearch query error: %s" % str(e), {'index': index, 'query': query})
-        return '1969-12-30T00:00:00Z'
-    if len(res['hits']['hits']) == 0:
-        # Index is completely empty, return a date before the epoch
-        return '1969-12-30T00:00:00Z'
-    return res['hits']['hits'][0][timestamp_field]
