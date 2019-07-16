@@ -138,6 +138,20 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     hits_sp.add_argument('rule',
                          help='The rule to retrieve hits')
 
+    # Console command
+    console_sp = sub_parser.add_parser('console', parents=[config], help='Start the reactor console')
+    console_sp.set_defaults(action='console')
+    console_sp.add_argument('--index',
+                            default=None,
+                            choices=['alert', 'error', 'silence', 'status'],
+                            help='Index to retrieve hits from')
+    console_sp.add_argument('--max-hits',
+                            type=int,
+                            metavar='[0..100]',
+                            choices=RangeChoice(0, 100),
+                            default=10,
+                            help='Maximum number of hits to retrieve (default: %(default)s)')
+
     # Silence command
     silence_sp = sub_parser.add_parser('silence', parents=[config], help='Silence a set of rules')
     silence_sp.set_defaults(action='silence')
@@ -207,6 +221,12 @@ def perform_hits(config: dict, args: dict) -> int:
     return 0
 
 
+def perform_console(config: dict, args: dict) -> int:
+    from reactor.console import run_console
+    run_console(Client(config, args))
+    return 0
+
+
 def perform_silence(config: dict, args: dict) -> int:
     """ Perform the silence action. """
     client = Client(config, args)
@@ -239,6 +259,10 @@ def main(args):
         # Retrieve hits for the specified rule
         elif args['action'] == 'hits':
             exit_code = perform_hits(config, args)
+
+        # Start the reactor console
+        elif args['action'] == 'console':
+            exit_code = perform_console(config, args)
 
         # Silence the set of specified rules
         elif args['action'] == 'silence':
