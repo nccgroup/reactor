@@ -1,4 +1,5 @@
 import curses
+import os
 import texttable as tt
 import time
 
@@ -7,6 +8,7 @@ from reactor.util import ts_to_dt, pretty_ts, dt_now
 
 
 def run_console(client: Client):
+    os.environ.setdefault('ESCDELAY', '25')
     curses.wrapper(console_main, client=client)
 
 
@@ -58,7 +60,7 @@ def console_main(stdscr, client: Client):
     curses.doupdate()
 
     page = 0
-    highlight = 0
+    highlight = None
 
     index = client.args['index']
     refreshed_at = 0
@@ -97,7 +99,8 @@ def console_main(stdscr, client: Client):
                 if line.startswith('----'):
                     first = True
                     line_num += 1
-            table_content_window.chgat(highlight, 0, -1, curses.A_REVERSE)
+            if highlight is not None:
+                table_content_window.chgat(highlight, 0, -1, curses.A_REVERSE)
             table_content_window.refresh()
             redraw_content = False
 
@@ -142,10 +145,13 @@ def console_main(stdscr, client: Client):
             refreshed_at = 0
 
         elif c == curses.KEY_UP:
-            highlight = max(0, highlight-1)
+            highlight = 0 if highlight is None else max(0, highlight-1)
             redraw_content = True
         elif c == curses.KEY_DOWN:
-            highlight = min(table_content_window.getmaxyx()[0]-1, highlight+1)
+            highlight = 0 if highlight is None else min(table_content_window.getmaxyx()[0]-1, highlight+1)
+            redraw_content = True
+        elif c == 27:  # the escape key
+            highlight = None
             redraw_content = True
 
         else:
@@ -244,7 +250,7 @@ def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
             tab.set_cols_align(['l', 'l', 'l', 'l', 'r', 'r', 'r'])
 
             res = client.es_client.cat.indices(index=client.writeback_index + '_*', format='json')
-            for hit in res[:max_hits]:
+            for hit in sorted(res, key=lambda h: h['index'])[offset:offset+max_hits]:
                 tab.add_row([
                     hit.pop('uuid'),
                     hit.pop('index'),
@@ -255,7 +261,7 @@ def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
                     hit.pop('store.size')
                 ])
                 pass
-            count = len(res)
+            count = len(res[offset:offset+max_hits])
             total = len(res)
 
         return tab.draw(), count, total
