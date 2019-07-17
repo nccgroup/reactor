@@ -3,11 +3,12 @@ import time
 import elasticsearch
 import elasticsearch.helpers
 import os
+import sys
 from reactor.exceptions import ReactorException
 from reactor.util import reactor_logger, ElasticSearchClient
 
 
-def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, old_index=None):
+def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, old_index=None, force=False):
     reactor_logger.info('ElasticSearch version: %s', es_client.es_version)
 
     es_index_mappings = read_es_index_mappings(es_client.es_version[0])
@@ -18,6 +19,10 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
         index = conf['index'] + '_alert' if es_client.es_version_at_least(6) else conf['index']
         if es_index.exists(index):
             reactor_logger.warning('Index %s already exists. Skipping index creation.' % index)
+            return None
+    elif not force:
+        if not query_yes_no("Recreating indices will delete ALL existing data. Are you sure you want to recreate?"):
+            reactor_logger.warning('Initialisation abandoned.')
             return None
 
     if es_index.exists_template(conf['index']):
@@ -52,6 +57,15 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
             index_created = es_index.exists(index_name)
         if not index_created:
             raise ReactorException('Failed to create index: %s' % index_name)
+    for item in es_client.cat.aliases(format='json'):
+        if item['alias'] != conf['alert_alias']:
+            continue
+        reactor_logger.info('Deleting index ' + item['index'] + '.')
+        try:
+            es_index.delete(item['index'])
+        except elasticsearch.NotFoundError:
+            # Why does this ever occur?? It shouldn't. But it does.
+            pass
 
     if es_client.es_version_at_least(7):
         # TODO remove doc_type completely when elasticsearch client allows doc_type=None
@@ -130,3 +144,30 @@ def read_es_index_mapping(mapping, es_version):
     with open(path, 'r') as f:
         reactor_logger.info("Reading index mapping '%s'", mapping_path)
         return json.load(f)
+
+
+def query_yes_no(question: str, default="yes") -> bool:
+    """
+    Ask a yes/no question via `input()` and return their answer.
+    """
+    valid = {"yes": True, "y": True, "ye": True,
+             "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("Invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+        choice = input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' "
+                             "(or 'y' or 'no').\n")

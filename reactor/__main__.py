@@ -121,6 +121,9 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     init_sp.add_argument('--recreate',
                          action='store_true',
                          help='Recreated the indices and template')
+    init_sp.add_argument('-f', '--force',
+                         action='store_true',
+                         help='Force recreation of indices (no user prompt)')
     init_sp.add_argument('--old-index',
                          dest='old_index',
                          help='Name of the old index to copy the data across from')
@@ -179,7 +182,8 @@ def handle_signal(recv_signal, frame):
 def perform_init(config: dict, args: dict) -> int:
     """ Perform the initialise action. """
     from reactor.init import create_indices
-    create_indices(elasticsearch_client(config['elasticsearch']), config, args['recreate'], args['old_index'])
+    create_indices(elasticsearch_client(config['elasticsearch']),
+                   config, args['recreate'], args['old_index'], args['force'])
     return 0
 
 
