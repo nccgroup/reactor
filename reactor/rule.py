@@ -33,6 +33,7 @@ class Rule(object):
         self._max_hits = float('inf')
 
         # Timers
+        self.start_time = None
         self.initial_start_time = None
         self.minimum_start_time = None
         self.original_start_time = None

@@ -112,19 +112,19 @@ class Client(object):
             self.handle_error('Error querying for last run: %s' % e, {'rule': rule.name})
             return None
 
-    def set_start_time(self, rule: Rule, end_time, start_time=None) -> datetime.datetime:
+    def set_start_time(self, rule: Rule, end_time) -> None:
         """ Given a rule and an end time, sets the appropriate start_time for it. """
         # This means we are starting fresh
-        if start_time is None:
+        if rule.start_time is None:
             if not rule.conf('scan_entire_timeframe'):
                 # Try to get the last run
                 last_run_end = self.get_start_time(rule)
                 if last_run_end:
-                    start_time = last_run_end
-                    start_time = rule.adjust_start_time_for_overlapping_agg_query(start_time)
-                    start_time = rule.adjust_start_time_for_interval_sync(start_time)
-                    rule.minimum_start_time = start_time
-                    return start_time
+                    rule.start_time = last_run_end
+                    rule.start_time = rule.adjust_start_time_for_overlapping_agg_query(rule.start_time)
+                    rule.start_time = rule.adjust_start_time_for_interval_sync(rule.start_time)
+                    rule.minimum_start_time = rule.start_time
+                    return None
 
         # Use buffer_time for normal queries, or run_every increments otherwise
         # or, if scan_entire_timeframe
@@ -135,22 +135,22 @@ class Client(object):
                 buffer_delta = end_time - rule.conf('timeframe')
             # If we started using a previous run, don't go past that
             if rule.minimum_start_time and rule.minimum_start_time > buffer_delta:
-                start_time = rule.minimum_start_time
+                rule.start_time = rule.minimum_start_time
             # If buffer_time doesn't bring us past the previous end time, use that instead
             elif rule.previous_end_time and rule.previous_end_time < buffer_delta:
-                start_time = rule.previous_end_time
-                rule.adjust_start_time_for_overlapping_agg_query(start_time)
+                rule.start_time = rule.previous_end_time
+                rule.start_time = rule.adjust_start_time_for_overlapping_agg_query(rule.start_time)
             else:
-                start_time = buffer_delta
+                rule.start_time = buffer_delta
 
         else:
             if not rule.conf('scan_entire_timeframe'):
                 # Query from the end of the last run, if it exists, otherwise a run_every sized window
-                start_time = rule.previous_end_time or (end_time - rule.conf('run_every'))
+                rule.start_time = rule.previous_end_time or (end_time - rule.conf('run_every'))
             else:
-                start_time = rule.previous_end_time or (end_time - rule.conf('timeframe'))
+                rule.start_time = rule.previous_end_time or (end_time - rule.conf('timeframe'))
 
-        return start_time
+        return None
 
     def run_rule(self, rule: Rule, end_time, start_time=None) -> (int, int, int):
         # Start the clock
@@ -162,12 +162,14 @@ class Client(object):
             self.add_aggregated_alert(match, rule)
 
         # Start from provided time if it's given
-        if not start_time:
-            start_time = self.set_start_time(rule, end_time)
-        rule.original_start_time = start_time
+        if start_time:
+            rule.start_time = start_time
+        else:
+            self.set_start_time(rule, end_time)
+        rule.original_start_time = rule.start_time
 
         # Don't run if start_time was set to the future
-        if dt_now() <= start_time:
+        if dt_now() <= rule.start_time:
             reactor_logger.warning('Attempted to use query start time in the future (%s), sleeping instead', start_time)
             return 0, 0, 0
 
@@ -179,20 +181,20 @@ class Client(object):
 
         # Prepare the self before running it
         try:
-            rule.type.prepare(self.es_client, start_time)
+            rule.type.prepare(self.es_client, rule.start_time)
         except Exception as e:
             raise ReactorException('Error preparing rule %s: %s' % (rule.name, repr(e)))
 
         # Run the rule. If querying over a large time period, split it up into segments
         segment_size = rule.get_segment_size()
-        tmp_end_time = start_time
-        while (end_time - start_time) > segment_size:
+        tmp_end_time = rule.start_time
+        while (end_time - rule.start_time) > segment_size:
             tmp_end_time = tmp_end_time + segment_size
-            if not self.run_query(rule, start_time, tmp_end_time):
+            if not self.run_query(rule, rule.start_time, tmp_end_time):
                 return 0, 0, 0
             rule.cumulative_hits += rule.num_hits
             rule.num_hits = 0
-            start_time = tmp_end_time
+            rule.start_time = tmp_end_time
             rule.type.garbage_collect(tmp_end_time)
 
         # Guarantee that at least one search search occurs
@@ -205,7 +207,7 @@ class Client(object):
             else:
                 end_time = tmp_end_time
         else:
-            if not self.run_query(rule, start_time, end_time):
+            if not self.run_query(rule, rule.start_time, end_time):
                 return 0, 0, 0
             rule.cumulative_hits += rule.num_hits
             rule.type.garbage_collect(end_time)
@@ -333,11 +335,11 @@ class Client(object):
         except Exception as e:
             self.handle_uncaught_exception(e, rule)
         else:
-            reactor_logger.info('Ran %s from %s to %s: %s query hits (%s already seen), %s matches, '
+            reactor_logger.info('Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                 '%s alerts sent (%s silenced)',
-                                rule.name,
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(end_time, rule.conf('use_local_time')),
+                                rule.name,
                                 rule.cumulative_hits, rule.num_duplicates, num_matches, alerts_sent, num_silenced)
 
     def start(self):
@@ -468,9 +470,9 @@ class Client(object):
         else:
             old_start_time = pretty_ts(rule.original_start_time, rule.conf('use_local_time'))
             reactor_logger.log(logging.INFO if alerts_sent else logging.DEBUG,
-                               'Ran %s from %s to %s: %s query hits (%s already seen), %s matches, '
+                               'Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                '%s alerts sent (%s silenced)',
-                               rule.name, old_start_time, pretty_ts(end_time, rule.conf('use_local_time')),
+                               old_start_time, pretty_ts(end_time, rule.conf('use_local_time')), rule.name,
                                rule.cumulative_hits, rule.num_duplicates, num_matches, alerts_sent, num_silenced)
 
             if next_run < datetime.datetime.utcnow():
