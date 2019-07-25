@@ -120,6 +120,14 @@ class RuleType(object):
     def add_aggregation_data(self, payload):
         raise NotImplementedError()
 
+    def merge_alert_body(self, orig_alert: dict, new_alert: dict):
+        """ Merge `new_alert` into `orig_alert`. """
+        orig_alert['match_data']['num_events'] += new_alert['match_data']['num_events']
+        orig_alert['match_data']['began_at'] = min(ts_to_dt(orig_alert['match_data']['began_at']),
+                                                   ts_to_dt(new_alert['match_data']['began_at']))
+        orig_alert['match_data']['ended_at'] = max(ts_to_dt(orig_alert['match_data']['ended_at']),
+                                                   ts_to_dt(new_alert['match_data']['ended_at']))
+
 
 class AnyRuleType(RuleType):
     rule_schema = yaml_schema(SetDefaultsDraft7Validator,
@@ -127,8 +135,13 @@ class AnyRuleType(RuleType):
 
     """ A rule that will match on any input data. """
     def add_data(self, data: list):
+        qk = self.conf.get('query_key', None)
         for event in data:
-            self.add_match({}, event)
+            extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
+                     'num_events': 1,
+                     'began_at': ts_to_dt(dots_get(event, self.ts_field)),
+                     'ended_at': ts_to_dt(dots_get(event, self.ts_field))}
+            self.add_match(extra, event)
 
     def add_count_data(self, counts):
         pass
@@ -208,7 +221,10 @@ class BlacklistRuleType(CompareRuleType):
         return term in self.conf['blacklist']
 
     def generate_match(self, event: dict) -> (dict, dict):
-        extra = {'compare_key': self.conf['compare_key']}
+        extra = {'compare_key': self.conf['compare_key'],
+                 'num_events': 1,
+                 'began_at': dots_get(event, self.ts_field),
+                 'ended_at': dots_get(event, self.ts_field)}
         return extra, event
 
 
@@ -241,7 +257,10 @@ class WhitelistRuleType(CompareRuleType):
             return term not in self.conf['whitelist']
 
     def generate_match(self, event: dict) -> (dict, dict):
-        extra = {'compare_key': self.conf['compare_key']}
+        extra = {'compare_key': self.conf['compare_key'],
+                 'num_events': 1,
+                 'began_at': dots_get(event, self.ts_field),
+                 'ended_at': dots_get(event, self.ts_field)}
         return extra, event
 
 
@@ -297,7 +316,11 @@ class ChangeRuleType(CompareRuleType):
         extra = {}
         if change:
             extra = {'old_value': change[0],
-                     'new_value': change[1]}
+                     'new_value': change[1],
+                     'key': hashable(dots_get(event, self.conf['query_key'])),
+                     'num_events': 1,
+                     'began_at': dots_get(event, self.ts_field),
+                     'ended_at': dots_get(event, self.ts_field)}
             reactor_logger.debug('Description of the changed records (%s): %s', extra, event)
         return extra, event
 
@@ -417,7 +440,10 @@ class FlatlineRuleType(FrequencyRuleType):
         count = self.occurrences[key].count()
         if count < self.conf['threshold']:
             # Do a deep-copy, otherwise we lost the datetime type in the timestamp field of the last event
-            extra = {'key': key, 'count': count,
+            extra = {'key': key,
+                     'count': count,
+                     'num_events': count,
+                     # TODO: consider what to do if len(self.occurrences[key]) == 1
                      'began_at': self.get_ts(self.occurrences[key].data[0]),
                      'ended_at': self.get_ts(self.occurrences[key].data[-1])}
             event = copy.deepcopy(self.occurrences[key].data[-1][0])
@@ -570,8 +596,13 @@ class SpikeRuleType(RuleType):
         else:
             spike_count = self.cur_windows[qk].mean()
             reference_count = self.ref_windows[qk].mean()
+        qk = self.conf.get('query_key', None)
         extra = {'spike_count': spike_count,
-                 'reference_count': reference_count}
+                 'reference_count': reference_count,
+                 'key': hashable(dots_get(event, qk)) if qk else 'all',
+                 'num_events': spike_count,
+                 'began_at': self.get_ts(self.cur_windows[qk].data[0]),
+                 'ended_at': self.get_ts(self.cur_windows[qk].data[-1])}
 
         return extra, event
 
@@ -862,7 +893,11 @@ class NewTermRuleType(RuleType):
         """ Generate a match and, if there is a value, store in `self.seen_values[field]`. """
         event = event or {field: value, self.ts_field: timestamp}
         event = copy.deepcopy(event)
-        extra = {}
+        qk = self.conf.get('query_key', None)
+        extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
+                 'num_events': 1,
+                 'began_at': dots_get(event, self.ts_field),
+                 'ended_at': dots_get(event, self.ts_field)}
         if value is None:
             extra['missing_field'] = field
         else:
@@ -927,7 +962,12 @@ class CardinalityRuleType(RuleType):
                 self.check_for_match(key, event, False)
             else:
                 self.first_event.pop(key, None)
-                self.add_match({'cardinality': self.cardinality_cache[key]}, event)
+                extra = {'cardinality': self.cardinality_cache[key],
+                         'key': key,
+                         'num_events': len(self.cardinality_cache[key]),
+                         'began_at': self.first_event.get(key, dots_get(event, self.ts_field)),
+                         'ended_at': dots_get(event, self.ts_field)}
+                self.add_match(extra, event)
 
     def get_match_str(self, match: dict) -> str:
         lt = self.conf.get('use_local_time')
@@ -1069,7 +1109,10 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
                          self.metric_key: metric_val}
                 if query_key is not None:
                     match[self.conf['query_key']] = query_key
-                self.add_match({}, match)
+                extra = {'num_events': 1,
+                         'began_at': timestamp,
+                         'ended_at': timestamp}
+                self.add_match(extra, match)
 
     def check_matches_recursive(self, timestamp, query_key, aggregation_data, compound_keys, match_data):
         if len(compound_keys) < 1:
@@ -1090,7 +1133,10 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
                 compound_value = [match_data[key] for key in self.conf['compound_query_key']]
                 match_data[self.conf['query_key']] = ','.join(compound_value)
 
-                self.add_match({}, match_data)
+                extra = {'num_events': 1,
+                         'began_at': timestamp,
+                         'ended_at': timestamp}
+                self.add_match(extra, match_data)
 
     def crossed_thresholds(self, metric_value):
         if metric_value is None:
@@ -1232,7 +1278,10 @@ class PercentageMatchRuleType(BaseAggregationRuleType):
                 match_percentage = float(match_bucket_count) / float(total_count) * 100.0
                 if self.percentage_violation(match_percentage):
                     extra = {'percentage': match_percentage,
-                             'denominator': total_count}
+                             'denominator': total_count,
+                             'num_events': 1,
+                             'began_at': timestamp,
+                             'ended_at': timestamp}
                     event = {self.ts_field: timestamp}
                     if query_key is not None:
                         event[self.conf['query_key']] = query_key

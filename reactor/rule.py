@@ -185,13 +185,22 @@ class Rule(object):
                 'match_data': data,
                 'match_body': match,
                 'alert_info': [alerter.get_info() for alerter in self.alerters],
-                'alert_time': alert_time}
+                'alert_time': alert_time,
+                'modify_time': alert_time,
+                'num_matches': 1}
 
         match_time = dots_get(match, self.conf('timestamp_field'))
         if match_time is not None:
             body['match_time'] = match_time
 
         return body
+
+    def merge_alert_body(self, orig_alert: dict, new_alert: dict):
+        """ Merge `new_alert` into `orig_alert`. """
+        orig_alert['num_matches'] += new_alert['num_matches']
+        orig_alert['modify_time'] = new_alert['modify_time']
+
+        self.type.merge_alert_body(orig_alert, new_alert)
 
     def get_query(self, filters: dict, start_time=None, end_time=None, sort: Optional[str] = 'asc',
                   timestamp_field: str = '@timestamp') -> dict:

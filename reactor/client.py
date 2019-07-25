@@ -9,6 +9,8 @@ import random
 import time
 import traceback
 
+from functools import lru_cache
+
 import reactor.ruletype
 from reactor.loader import Rule, RuleLoader
 from typing import Optional
@@ -52,6 +54,7 @@ class Client(object):
         self.string_multi_field_name = conf['string_multi_field_name']
 
         self.silence_cache = {}
+        self.alerts_cache = {}
 
         self.start_time = args.get('start', dt_now())
         self._es_version = None
@@ -219,8 +222,6 @@ class Client(object):
         while rule.type.matches:
             extra, match = rule.type.matches.pop(0)
             alert = rule.get_alert_body(extra, match, dt_now())
-            alert['num_hits'] = rule.cumulative_hits
-            alert['num_matches'] = num_matches
 
             # If realert is set, silence the rule for that duration
             # Silence is cached by query_key, if it exists
@@ -421,8 +422,9 @@ class Client(object):
             if self.scheduler.get_job(rule.hash):
                 continue
 
-            # Add a default value for the silence cache
+            # Add a default value for the silence cache and alerts cache
             self.silence_cache.setdefault(rule.uuid, {})
+            self.alerts_cache.setdefault(rule.uuid, {})
 
             # Add the rule to the scheduler
             next_run_time = datetime.datetime.now() + datetime.timedelta(seconds=random.randint(0, len(self.loader)))
@@ -437,7 +439,7 @@ class Client(object):
     def handle_rule_execution(self, rule: Rule):
         next_run = datetime.datetime.utcnow() + rule.run_every
 
-        # Set end time  based on the rule's delay
+        # Set end time based on the rule's delay
         if self.args['end']:
             end_time = self.args['end']
         elif rule.conf('query_delay'):
@@ -553,6 +555,10 @@ class Client(object):
         """ Collect the garbage after running a rule. """
         now = dt_now()
         buffer_time = rule.conf('buffer_time') + rule.conf('query_delay')
+
+        # Clear up the alerts cache
+        self.alerts_cache.setdefault(rule.uuid, {})
+        self.alerts_cache[rule.uuid] = {}
 
         # Clear up the silence cache
         if rule.uuid in self.silence_cache:
@@ -693,13 +699,26 @@ class Client(object):
                 # Set all matches to aggregate together
                 if agg_id:
                     alert['aggregate_id'] = agg_id
-                res = self.writeback('alert', alert, rule, doc_id=alert['uuid'])
+                res = self.writeback('alert', alert, rule, doc_id=alert['uuid'], update=retried)
                 if res and not agg_id:
                     agg_id = res['_id']
 
+                # Add the alert to the alerts cache (will be cleared up in garbage collection)
+                if res:
+                    self.alerts_cache[rule.uuid][alert['uuid']] = alert
+        else:
+            for alert in alerts:
+                # Lookup the existing alert
+                alert_uuid = self.get_silenced(rule, rule.get_query_key_value(alert['match_body']) or '_silence')[2]
+                if alert_uuid:
+                    og_alert = self.get_alert(rule.uuid, alert_uuid)
+                    if og_alert:
+                        rule.merge_alert_body(og_alert, alert)
+                        self.writeback('alert', og_alert, rule, doc_id=alert_uuid, update=True)
+
         return len(alerts)
 
-    def writeback(self, doc_type, writeback_body, rule=None, doc_id=None) -> Optional[dict]:
+    def writeback(self, doc_type, writeback_body, rule=None, doc_id=None, update=False) -> Optional[dict]:
         for key in writeback_body.keys():
             # Convert any datetime objects to timestamps
             if isinstance(writeback_body[key], datetime.datetime):
@@ -714,8 +733,9 @@ class Client(object):
             return None
 
         try:
-            if self.es_client.es_version_at_least(6):
-                return self.es_client.index(id=doc_id, index=index, doc_type='_doc', body=writeback_body)
+            doc_type = '_doc' if self.es_client.es_version_at_least(6) else doc_type
+            if update:
+                return self.es_client.update(id=doc_id, index=index, doc_type=doc_type, body={'doc': writeback_body})
             else:
                 return self.es_client.index(id=doc_id, index=index, doc_type=doc_type, body=writeback_body)
         except elasticsearch.ElasticsearchException as e:
@@ -880,15 +900,19 @@ class Client(object):
 
     def is_silenced(self, rule: Rule, silence_key=None, timestamp=None):
         """ Checks if a rule is silenced. Return false on exception. """
-        timestamp = timestamp or dt_now()
+        silenced = self.get_silenced(rule, silence_key)
+        return silenced and (timestamp or dt_now()) < silenced[0]
+
+    def get_silenced(self, rule: Rule, silence_key=None) -> Optional[tuple]:
+        """ Look up whether the rule and silence key exists. """
         cache_key = silence_key or '_silence'
         self.silence_cache.setdefault(rule.uuid, {})
         if cache_key in self.silence_cache[rule.uuid]:
-            return timestamp < self.silence_cache[rule.uuid][cache_key][0]
+            return self.silence_cache[rule.uuid][cache_key]
 
         # In debug/test mode we don't populate from Reactor status index
         if self.mode in ['debug', 'test']:
-            return False
+            return None
 
         query = {'term': {'silence_key': rule.uuid + '.' + cache_key}}
         sort = {'sort': {'until': {'order': 'desc'}}}
@@ -909,16 +933,16 @@ class Client(object):
                                             size=1, body=query, _source_include=['until', 'exponent'])
         except elasticsearch.ElasticsearchException as e:
             self.handle_error('Error while querying for alert silence status: %s' % e, {'rule': rule.name})
-            return False
+            return None
         else:
             if res['hits']['hits']:
                 until_ts = res['hits']['hits'][0]['_source']['until']
                 exponent = res['hits']['hits'][0]['_source'].get('exponent', 0)
                 alert_uuid = res['hits']['hits'][0]['_source'].get('alert_uuid')
                 self.silence_cache[rule.uuid][cache_key] = (ts_to_dt(until_ts), exponent, alert_uuid)
-                return timestamp < ts_to_dt(until_ts)
+                return self.silence_cache[rule.uuid][cache_key]
 
-            return False
+            return None
 
     def handle_error(self, message, data=None):
         """ Logs messages at error level and writes message, data and traceback to ElasticSearch. """
@@ -1025,3 +1049,23 @@ class Client(object):
             # Index is completely empty, return a date before the epoch
             return '1969-12-30T00:00:00Z'
         return res['hits']['hits'][0][timestamp_field]
+
+    @lru_cache(maxsize=100)
+    def get_alert(self, rule_uuid: str, uuid: str):
+        """ Attempt to retrieve an alert from ElasticSearch by UUID. """
+        if uuid in self.alerts_cache[rule_uuid]:
+            return self.alerts_cache[rule_uuid][uuid]
+
+        try:
+            query = {'query': {'term': {'_id': uuid}}}
+            # TODO: look into using `version`
+            res = self.es_client.search(index=self.conf['alert_alias'], body=query, size=1)
+
+            if res['hits']['hits']:
+                return res['hits']['hits'][0]['_source']
+
+        except:
+            pass
+
+        return None
+

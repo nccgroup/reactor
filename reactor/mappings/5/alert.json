@@ -21,7 +21,15 @@
         "type": "date",
         "format": "dateOptionalTime"
       },
+      "modify_time": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      },
       "match_body": {
+        "type": "object",
+        "enabled": "false"
+      },
+      "match_data": {
         "type": "object",
         "enabled": "false"
       },
