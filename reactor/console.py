@@ -6,9 +6,11 @@ import time
 from reactor.client import Client
 from reactor.util import ts_to_dt, pretty_ts, dt_now
 
+highlight = []
+cache = {}
+
 
 def run_console(client: Client):
-    os.environ.setdefault('ESCDELAY', '25')
     curses.wrapper(console_main, client=client)
 
 
@@ -24,6 +26,7 @@ def console_main(stdscr, client: Client):
     curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
     curses.init_pair(5, curses.COLOR_BLACK, curses.COLOR_YELLOW)
+    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_GREEN)
     stdscr.nodelay(True)
 
     # Begin the program
@@ -60,7 +63,6 @@ def console_main(stdscr, client: Client):
     curses.doupdate()
 
     page = 0
-    highlight = None
 
     index = client.args['index']
     refreshed_at = 0
@@ -99,8 +101,8 @@ def console_main(stdscr, client: Client):
                 if line.startswith('----'):
                     first = True
                     line_num += 1
-            if highlight is not None:
-                table_content_window.chgat(highlight, 0, -1, curses.A_REVERSE)
+            for line, new_alert in highlight:  # type: int, bool
+                table_content_window.chgat(line, 0, -1, curses.color_pair(6) if new_alert else curses.A_REVERSE)
             table_content_window.refresh()
             redraw_content = False
 
@@ -144,16 +146,6 @@ def console_main(stdscr, client: Client):
             page = int(total/table_content_window.getmaxyx()[0])
             refreshed_at = 0
 
-        elif c == curses.KEY_UP:
-            highlight = 0 if highlight is None else max(0, highlight-1)
-            redraw_content = True
-        elif c == curses.KEY_DOWN:
-            highlight = 0 if highlight is None else min(table_content_window.getmaxyx()[0]-1, highlight+1)
-            redraw_content = True
-        elif c == 27:  # the escape key
-            highlight = None
-            redraw_content = True
-
         else:
             time.sleep(0.1)
 
@@ -168,6 +160,8 @@ def console_main(stdscr, client: Client):
 
 
 def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
+    global highlight
+    highlight = []
     try:
         offset = page * max_hits
 
@@ -179,15 +173,26 @@ def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
         if index == 'status':
             index = client.get_writeback_index('status')
             tab.header(['Timestamp', 'Rule UUID', 'Rule Name', 'Start Time', 'End Time', 'Time Taken (s)', 'Matches', 'Hits'])
-            column = ['@timestamp', 'rule_uuid', 'rule_name', 'start_time', 'end_time', 'time_taken', 'matches', 'hits']
             tab.set_cols_dtype(['t', 't', 't', 't', 't', 'f', 'i', 'i'])
             tab.set_cols_align(['l', 'l', 'l', 'l', 'l', 'r', 'r', 'r'])
 
-            query = {'sort': {column[0]: 'desc'}}
+            query = {'sort': {'@timestamp': 'desc'}}
             res = client.es_client.search(index=index, size=max_hits, from_=offset, body=query)
             for hit in res['hits']['hits']:
                 source = hit['_source']  # type: dict
-                row = [pretty_ts(ts_to_dt(source.pop(column[0])), False)] + [source.pop(key) for key in column[1:]]
+                try:
+                    row = [
+                        pretty_ts(ts_to_dt(source.pop('@timestamp')), False),
+                        source.pop('rule_uuid'),
+                        source.pop('rule_name'),
+                        pretty_ts(ts_to_dt(source.pop('start_time')), False),
+                        pretty_ts(ts_to_dt(source.pop('end_time')), False),
+                        source.pop('time_taken'),
+                        source.pop('matches'),
+                        source.pop('hits'),
+                    ]
+                except Exception as e:
+                    row = [str(e), repr(hit['_source']), hit['_id'], '', '', '', '', '']
                 tab.add_row(row)  # + [source]
 
             count = len(res['hits']['hits'])
@@ -213,36 +218,67 @@ def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
         elif index == 'silence':
             index = client.get_writeback_index('silence')
             tab.header(['Timestamp', 'Rule UUID', 'Until', 'Exponent', 'Silence Key', 'Alert UUID'])
-            column = ['@timestamp', 'rule_uuid', 'until', 'exponent', 'silence_key', 'alert_uuid']
             tab.set_cols_dtype(['t', 't', 't', 'i', 't', 't'])
             tab.set_cols_align(['l', 't', 'l', 'r', 'l', 'l'])
 
-            query = {'sort': {column[0]: 'desc'}}
+            query = {'sort': {'@timestamp': 'desc'}}
             res = client.es_client.search(index=index, size=max_hits, from_=offset, body=query)
             for hit in res['hits']['hits']:
                 source = hit['_source']  # type: dict
-                row = [pretty_ts(ts_to_dt(source.pop(column[0])), False)] + [source.pop(key) for key in column[1:]]
+                row = [
+                    pretty_ts(ts_to_dt(source.pop('@timestamp')), False),
+                    source.pop('rule_uuid'),
+                    pretty_ts(ts_to_dt(source.pop('until')), False),
+                    source.pop('exponent'),
+                    source.pop('silence_key'),
+                    source.pop('alert_uuid'),
+                ]
                 tab.add_row(row)  # + [source]
 
             count = len(res['hits']['hits'])
             total = int(res['hits']['total'])
 
         elif index == 'alert':
+            cache.setdefault('alert', dt_now())
             index = client.conf['alert_alias']
-            tab.header(['Alert Time', 'Match Time', 'Alert UUID', 'Rule UUID', 'Rule Name', 'Num Hits', 'Num Matches', 'Match Data', 'match_body'])
-            column = ['alert_time', 'match_time', 'uuid', 'rule_uuid', 'rule_name', 'num_hits', 'num_matches', 'match_data', 'match_body']
-            tab.set_cols_dtype(['t', 't', 't', 't', 't', 'i', 'i', 'a', 'a'])
-            tab.set_cols_align(['l', 'l', 'l', 'l', 'l', 'r', 'r', 'l', 'l'])
+            tab.header(['',
+                        'Began At',
+                        'Ended At',
+                        # 'Alert Time',
+                        # 'Match Time',
+                        'Alert UUID',
+                        'Rule Name',
+                        'Duration',
+                        'Num Matches',
+                        'Num Events'])
+            tab.set_cols_dtype(['t', 't', 't', 't', 't', 't', 'i', 'i'])
+            tab.set_cols_align(['r', 'l', 'l', 'c', 'l', 'r', 'r', 'r'])
 
-            query = {'sort': {column[0]: 'desc'}}
+            query = {'sort': {'match_time': 'desc'}}
             res = client.es_client.search(index=index, size=max_hits, from_=offset, body=query)
-            for hit in res['hits']['hits']:
+            for i, hit in enumerate(res['hits']['hits']):
                 source = hit['_source']  # type: dict
-                row = [pretty_ts(ts_to_dt(source.pop(column[0])), False)] + [source.pop(key) for key in column[1:]]
+                if ts_to_dt(source['modify_time']) > cache['alert']:
+                    highlight.append((i, ts_to_dt(source['alert_time']) > cache['alert']))
+                row = [
+                    '(' + str(i + 1 + offset) + ')',
+                    pretty_ts(ts_to_dt(source['match_data']['began_at']), False),
+                    pretty_ts(ts_to_dt(source['match_data']['ended_at']), False),
+                    # pretty_ts(ts_to_dt(source.pop('alert_time')), False),
+                    # pretty_ts(ts_to_dt(source.pop('match_time')), False),
+                    source.pop('uuid'),
+                    source.pop('rule_name'),
+                    str(ts_to_dt(source['match_data']['ended_at'])-ts_to_dt(source['match_data']['began_at'])).split('.')[0],
+                    source['num_matches'],
+                    source['match_data']['num_events'],
+                ]
                 tab.add_row(row)  # + [source]
 
             count = len(res['hits']['hits'])
             total = int(res['hits']['total'])
+
+            # Update cache
+            cache['alert'] = dt_now()
 
         else:
             tab.header(['UUID', 'Index Name', 'Status', 'Health', 'Num Documents', 'Shards', 'Size'])
@@ -265,6 +301,7 @@ def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
             total = len(res)
 
         return tab.draw(), count, total
-    except:
-        return '', 0, 0
+
+    except Exception as e:
+        return '%s\n\n' % str(e), 0, 0
 
