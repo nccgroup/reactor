@@ -406,7 +406,7 @@ def unix_to_dt(ts) -> datetime.datetime:
 
 
 def dt_to_unix(dt) -> int:
-    return int(dt.datetime.timestamp())
+    return int(dt.timestamp())
 
 
 def unixms_to_dt(ts) -> datetime.datetime:

@@ -151,7 +151,7 @@ class Rule(object):
             if self.conf('use_run_every_query_size'):
                 return self.conf('run_every')
             else:
-                return self.conf('buffer_size')
+                return self.conf('buffer_time')
         else:
             return self.conf('run_every')
 
@@ -163,8 +163,10 @@ class Rule(object):
             return unix_to_dt(ts)
         elif self._conf['timestamp_type'] == 'unix_ms':
             return unixms_to_dt(ts)
-        else:
+        elif self._conf['timestamp_type'] == 'custom':
             return ts_to_dt_with_format(ts, self._conf['timestamp_format'])
+        else:
+            raise ReactorException('Unknown timestamp type %s' % self._conf['timestamp_type'])
 
     def dt_to_ts(self, ts):
         """ Ue the configured datetime to timestamp function. """
@@ -174,8 +176,10 @@ class Rule(object):
             return dt_to_unix(ts)
         elif self._conf['timestamp_type'] == 'unix_ms':
             return dt_to_unixms(ts)
-        else:
+        elif self._conf['timestamp_type'] == 'custom':
             return dt_to_ts_with_format(ts, self._conf['timestamp_format'])
+        else:
+            raise ReactorException('Unknown timestamp type %s' % self._conf['timestamp_type'])
 
     def get_alert_body(self, data: dict, match: dict, alert_time):
         doc_uuid = generate_id()
