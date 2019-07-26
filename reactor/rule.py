@@ -73,7 +73,7 @@ class Rule(object):
 
     @property
     def enabled(self):
-        return self._conf['is_enabled']
+        return self._conf.get('is_enabled', True)
 
     @property
     def name(self):
