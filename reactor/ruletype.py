@@ -1,7 +1,7 @@
 import copy
 import datetime
 import os
-from blist import sortedlist
+from sortedcontainers import SortedKeyList
 from reactor.exceptions import ReactorException, ConfigException
 from reactor.util import (
     dt_to_ts, ts_to_dt, dt_now, pretty_ts, total_seconds,
@@ -27,14 +27,14 @@ class EventWindow(object):
         self.timeframe = timeframe
         self.on_remove = on_remove
         self.get_ts = get_timestamp
-        self.data = sortedlist(key=self.get_ts)
+        self.data = SortedKeyList(key=self.get_ts)
         self.running_count = 0
 
     def __iter__(self):
         return iter(self.data)
 
     def clear(self):
-        self.data = sortedlist(key=self.get_ts)
+        self.data = SortedKeyList(key=self.get_ts)
         self.running_count = 0
 
     def append(self, event):
