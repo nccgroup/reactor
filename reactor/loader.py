@@ -228,7 +228,7 @@ class RuleLoader(object):
 
         # Check that doc_type is provided if use_(count/terms)_query
         if rule.conf('use_count_query') or rule.conf('use_terms_query'):
-            # @TODO will need make this conditional base on ES version
+            # TODO: will need make this conditional base on ES version
             if not rule.conf('doc_type'):
                 raise ConfigException('doc_type must be specified')
 

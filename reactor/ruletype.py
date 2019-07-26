@@ -309,7 +309,7 @@ class ChangeRuleType(CompareRuleType):
         return changed
 
     def generate_match(self, event: dict) -> (dict, dict):
-        # @TODO this is not technically correct
+        # TODO: this is not technically correct
         # if the term changes multiple times before an alert is sent
         # this data will be overwritten with the most recent change
         change = self.change_map.get(hashable(dots_get(event, self.conf['query_key'])))
@@ -363,6 +363,14 @@ class FrequencyRuleType(RuleType):
             self.occurrences.setdefault(key, EventWindow(self.conf['timeframe'], self.get_ts)).append((event, 1))
             self.check_for_match(key, end=False)
             keys.add(key)
+            # TODO: the silence on a match is only checking the match time (the last event not the first) therefore, a
+            #  new alert might "began_at" before the end of the silence period.
+            #  To correct this `add_data`, `add_count_data`, and `add_terms_data` will need to become generator
+            #  functions that are immediately processed by the client so that silences can be set (and be used to
+            #  enforce new alerts `began_at` don't overlap with old alert silence `until`).
+
+            # TODO: will potentially need to accept that any solution for now will not be able to easily handle historic
+            #  data added after future alerts have been fired, or that it requires data to come in order
 
         # We call this multiple times with the 'end' parameter because subclasses
         # may or may not want to check while only partial data has been added
@@ -661,7 +669,8 @@ class NewTermRuleType(RuleType):
                               os.path.join(os.path.dirname(__file__), 'schemas/ruletype-new_term.yaml'))
 
     """ A RuleType that detects a new value in a list of fields. """
-    # @TODO alter self.seen_values to be a mapping of value to timestamp of last seen - add option to forget old terms outside timeframe
+    # TODO: alter self.seen_values to be a mapping of value to timestamp of last seen - add option to forget old terms
+    #  outside timeframe
     def __init__(self, conf: dict):
         super(NewTermRuleType, self).__init__(conf)
         self.seen_values = {}

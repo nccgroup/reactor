@@ -39,7 +39,8 @@ def extend_with_default(validator_class):
 
     class ConvertToTypeChecker(jsonschema.TypeChecker):
         def is_type(self, instance, node_type):
-            # @TODO I'm not happy with having to use a custom type, need to work out a better way of converting fields using jsonschema
+            # TODO: I'm not happy with having to use a custom type, need to work out a better way of converting fields
+            #  using jsonschema
             if node_type == 'timedelta':
                 return isinstance(instance, datetime.timedelta)
             else:

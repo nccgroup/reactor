@@ -99,7 +99,7 @@ class Client(object):
                 res = self.es_client.search(index=index, size=1, body=query,
                                             _source_include=['end_time', 'rule_id'])
             else:
-                # @TODO decide whether to support older versions of ES (probably not)
+                # TODO: decide whether to support older versions of ES (probably not)
                 res = self.es_client.deprecated_search(index=index, doc_type=doc_type,
                                                        size=1, body=query, _source_include=['end_time', 'rule_id'])
 
@@ -490,7 +490,7 @@ class Client(object):
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run
-        # @TODO potentially add next_start_time/next_run_time/next_min_start_time in method parameters
+        # TODO: potentially add next_start_time/next_run_time/next_min_start_time in method parameters
         if rule.conf('limit_execution') and rule.next_start_time:
             self.scheduler.modify_job(job_id=rule.hash, next_run_time=rule.next_run_time)
             # If we are preventing covering non-scheduled time periods, reset min_start_time and previous_end_time
@@ -533,7 +533,7 @@ class Client(object):
                             rule.current_aggregate_id.pop(qk)
                             break
 
-                # @TODO No need to delete as we will be overriding existing id
+                # TODO: No need to delete as we will be overriding existing id
 
         for rule in self.loader:
             if rule.agg_matches:
@@ -566,7 +566,7 @@ class Client(object):
             for _id, (timestamp, _, _) in self.silence_cache[rule.uuid].items():
                 if now - timestamp > buffer_time:
                     stale_silences.append(_id)
-                    # @TODO Run a final update on the silenced alert
+                    # TODO: Run a final update on the silenced alert
             map(self.silence_cache[rule.uuid].pop, stale_silences)
 
         # Clear up the silence index in the writeback elasticsearch
@@ -676,7 +676,7 @@ class Client(object):
         # Alert pipeline is a single object shared between every alerter
         # This allows alerters to pass objects and data between themselves
         alert_pipeline = {'alert_time': alert_time}
-        for alerter in rule.type.alerters:
+        for alerter in rule.type.alerters:  # type: reactor.alerter.Alerter
             alerter.pipeline = alert_pipeline
             try:
                 alerter.alert(alerts, silenced=silenced, publish=self.mode in ['default'])
@@ -784,7 +784,7 @@ class Client(object):
 
             for match in res['hits']['hits']:
                 matches.append(match['_source'])
-                # @TODO no need to delete as we will update existing
+                # TODO: no need to delete as we will update existing
         except (KeyError, elasticsearch.ElasticsearchException) as e:
             self.handle_error('Error fetching aggregated matches: %s' % e, {'id': '_id'})
         return matches
@@ -859,7 +859,7 @@ class Client(object):
             reactor_logger.info('Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s',
                                 rule.name, agg_id, aggregation_key_value, alert_time)
 
-        # @TODO update this
+        # TODO: update this
         alert_body = self.get_alert_body(match, rule, False, alert_time)
         if agg_id:
             alert_body['aggregate_id'] = agg_id
@@ -880,7 +880,7 @@ class Client(object):
     def silence(self, rule: Rule, duration: datetime.timedelta, revoke: bool = False):
         """ Silence an alert for a period of time. --silence and --rule must be passed as args. """
 
-        # @TODO implement revoking silences (making sure to inform all running reactors of the change)
+        # TODO: implement revoking silences (making sure to inform all running reactors of the change)
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         self.silence_cache.setdefault(rule.uuid, {})
         if self.set_realert(rule, '_silence', dt_now() + duration, 0):
@@ -896,6 +896,7 @@ class Client(object):
                 'until': until}
 
         self.silence_cache[rule.uuid][silence_cache_key] = (until, exponent, alert_uuid)
+        # TODO: Inform the rule type of the silence. `Client.get_silenced` as well.
         return self.writeback('silence', body)
 
     def is_silenced(self, rule: Rule, silence_key=None, timestamp=None):
@@ -958,11 +959,11 @@ class Client(object):
         self.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
 
         if rule.conf('disable_rule_on_error'):
-            # @TODO implement rule disabling
+            # TODO: implement rule disabling
             self.loader.disabled(rule)
             self.scheduler.remove_job(job_id=rule.hash)
             reactor_logger.info('Rule %s disabled', rule.name)
-        # @TODO add notification
+        # TODO: add notification
         # if self.notify_email:
         #     self.send_notification()
 
@@ -986,7 +987,7 @@ class Client(object):
             if hits_terms is None:
                 top_events_count = {}
             else:
-                # @TODO convert this from py2 to py3
+                # TODO: convert this from py2 to py3
                 buckets = hits_terms.values()[0]
                 # get_hits_terms adds to num_hits, bu we don't want to count these
                 rule.num_hits -= len(buckets)
