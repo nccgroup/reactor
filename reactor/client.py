@@ -319,7 +319,7 @@ class Client(object):
                 elif rule.conf('aggregation_query_element'):
                     rule.type.add_aggregation_data(data)
                 else:
-                    rule.type.add_data(data)
+                    rule.type.add_hits_data(data)
 
             # We are complete if we don't have a scroll id or num of hits is equal to total hits
             complete = not (rule.scroll_id and rule.num_hits < rule.total_hits)

@@ -91,9 +91,6 @@ class RuleType(object):
         """ Prepare the RuleType for receiving data. Should be called before running a rule. """
         pass
 
-    def add_data(self, data: list):
-        raise NotImplementedError()
-
     def add_match(self, extra: dict, event: dict):
         """
         :param extra: Extra data about the triggered alert
@@ -105,20 +102,11 @@ class RuleType(object):
 
         self.matches.append((extra, event))
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         return ''
 
     def garbage_collect(self, timestamp: datetime.datetime):
         pass
-
-    def add_count_data(self, counts):
-        raise NotImplementedError()
-
-    def add_terms_data(self, terms):
-        raise NotImplementedError()
-
-    def add_aggregation_data(self, payload):
-        raise NotImplementedError()
 
     def merge_alert_body(self, orig_alert: dict, new_alert: dict):
         """ Merge `new_alert` into `orig_alert`. """
@@ -129,12 +117,36 @@ class RuleType(object):
                                                    ts_to_dt(new_alert['match_data']['ended_at']))
 
 
-class AnyRuleType(RuleType):
+class AcceptsHitsDataMixin(object):
+    """ A mixin class to denote that the RuleType accepts hits data. """
+    def add_hits_data(self, data: list):
+        raise NotImplementedError()
+
+
+class AcceptsCountDataMixin(object):
+    """ A mixin class to denote that the RuleType accepts count data. """
+    def add_count_data(self, counts):
+        raise NotImplementedError()
+
+
+class AcceptsTermsDataMixin(object):
+    """ A mixin class to denote that the RuleType accepts terms data. """
+    def add_terms_data(self, counts):
+        raise NotImplementedError()
+
+
+class AcceptsAggregationDataMixin(object):
+    """ A mixin class to denote that the RuleType accepts aggregation data. """
+    def add_aggregation_data(self, payload):
+        raise NotImplementedError()
+
+
+class AnyRuleType(RuleType, AcceptsHitsDataMixin):
     rule_schema = yaml_schema(SetDefaultsDraft7Validator,
                               os.path.join(os.path.dirname(__file__), 'schemas/ruletype-any.yaml'))
 
     """ A rule that will match on any input data. """
-    def add_data(self, data: list):
+    def add_hits_data(self, data: list):
         qk = self.conf.get('query_key', None)
         for event in data:
             extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
@@ -143,17 +155,8 @@ class AnyRuleType(RuleType):
                      'ended_at': ts_to_dt(dots_get(event, self.ts_field))}
             self.add_match(extra, event)
 
-    def add_count_data(self, counts):
-        pass
 
-    def add_terms_data(self, terms):
-        pass
-
-    def add_aggregation_data(self, payload):
-        pass
-
-
-class CompareRuleType(RuleType):
+class CompareRuleType(RuleType, AcceptsHitsDataMixin):
     """ A base class for matching a specific term by passing it to a compare function. """
     required_options = frozenset(['compound_compare_key'])
 
@@ -177,22 +180,13 @@ class CompareRuleType(RuleType):
         """ An event is a match if this returns true """
         raise NotImplementedError()
 
-    def add_data(self, data: list):
+    def add_hits_data(self, data: list):
         for event in data:
             if self.compare(event):
                 self.add_match(*self.generate_match(event))
 
     def generate_match(self, event: dict) -> (dict, dict):
         raise NotImplementedError()
-
-    def add_count_data(self, counts):
-        pass
-
-    def add_terms_data(self, terms):
-        pass
-
-    def add_aggregation_data(self, payload):
-        pass
 
 
 class BlacklistRuleType(CompareRuleType):
@@ -325,7 +319,7 @@ class ChangeRuleType(CompareRuleType):
         return extra, event
 
 
-class FrequencyRuleType(RuleType):
+class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, AcceptsTermsDataMixin):
     """ A RuleType that matches if num_events number of events occur within a timeframe. """
     required_options = frozenset(['num_events', 'timeframe'])
 
@@ -352,7 +346,7 @@ class FrequencyRuleType(RuleType):
             self.add_match(extra, event)
             self.occurrences.pop(key)
 
-    def add_data(self, data: list):
+    def add_hits_data(self, data: list):
         qk = self.conf.get('query_key', None)
         keys = set()
         for event in data:
@@ -378,7 +372,7 @@ class FrequencyRuleType(RuleType):
             if key in self.occurrences:
                 self.check_for_match(key, end=True)
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         lt = self.conf['use_local_time']
         match_ts = dots_get(match, self.ts_field)
         start_time = pretty_ts(ts_to_dt(match_ts) - self.conf['timeframe'], lt)
@@ -411,9 +405,6 @@ class FrequencyRuleType(RuleType):
                 self.occurrences.setdefault(bucket['key'],
                                             EventWindow(self.conf['timeframe'], self.get_ts)).append(event)
                 self.check_for_match(bucket['key'])
-
-    def add_aggregation_data(self, payload):
-        pass
 
 
 class FlatlineRuleType(FrequencyRuleType):
@@ -469,7 +460,7 @@ class FlatlineRuleType(FrequencyRuleType):
                 self.first_event.pop(key)
                 self.occurrences.pop(key)
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         ts = match[self.ts_field]
         lt = self.conf.get('use_local_time')
         message = 'An abnormally low number of events occurred around %s.\n' % pretty_ts(ts, lt)
@@ -491,7 +482,7 @@ class FlatlineRuleType(FrequencyRuleType):
             self.check_for_match(key, end=True)
 
 
-class SpikeRuleType(RuleType):
+class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, AcceptsTermsDataMixin):
     """ A RuleType that uses two sliding windows to compare relative event frequency. """
     required_options = frozenset(['timeframe', 'spike_height', 'spike_type'])
 
@@ -577,7 +568,7 @@ class SpikeRuleType(RuleType):
         return (spike_up and self.conf['spike_type'] in ['both', 'up']) or \
                (spike_dn and self.conf['spike_type'] in ['both', 'down'])
 
-    def add_data(self, data: list):
+    def add_hits_data(self, data: list):
         qk = self.conf.get('query_key', None)
         for event in data:
             # If no query_key, we use the key 'all' for all events
@@ -613,9 +604,9 @@ class SpikeRuleType(RuleType):
 
         return extra, event
 
-    def get_match_str(self, match: dict) -> str:
-        spike_count = match['spike_count']
-        ref_count = match['reference_count']
+    def get_match_str(self, extra: dict, match: dict) -> str:
+        spike_count = extra['spike_count']
+        ref_count = extra['reference_count']
         ts_str = pretty_ts(match[self.ts_field], self.conf['user_local_time'])
         timeframe = self.conf['timeframe']
         if self.field_value is None:
@@ -659,11 +650,8 @@ class SpikeRuleType(RuleType):
                 key = bucket['key']
                 self.handle_event(event, count, key)
 
-    def add_aggregation_data(self, payload):
-        pass
 
-
-class NewTermRuleType(RuleType):
+class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
     rule_schema = yaml_schema(SetDefaultsDraft7Validator,
                               os.path.join(os.path.dirname(__file__), 'schemas/ruletype-new_term.yaml'))
 
@@ -877,7 +865,7 @@ class NewTermRuleType(RuleType):
                     results.add(hierarchy_tuple + (node['key'],))
         return results
 
-    def add_data(self, data: list):
+    def add_hits_data(self, data: list):
         for event in data:
             for field in self.fields:
                 value = ()
@@ -925,14 +913,8 @@ class NewTermRuleType(RuleType):
                     if bucket['key'] not in self.seen_values[field]:
                         self.add_match(*self.generate_match(field, bucket['key'], timestamp=timestamp))
 
-    def add_count_data(self, counts):
-        pass
 
-    def add_aggregation_data(self, payload):
-        pass
-
-
-class CardinalityRuleType(RuleType):
+class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
     """ A RuleType that matches if cardinality of a field is above or below a threshold within a timeframe. """
     required_options = frozenset(['timeframe', 'cardinality_field'])
 
@@ -948,7 +930,7 @@ class CardinalityRuleType(RuleType):
         self.first_event = {}
         self.timeframe = self.conf['timeframe']
 
-    def add_data(self, data: list):
+    def add_hits_data(self, data: list):
         qk = self.conf.get('query_key', None)
         for event in data:
             # If no query_key, we use the key 'all' for all events
@@ -980,7 +962,7 @@ class CardinalityRuleType(RuleType):
                          'ended_at': dots_get(event, self.ts_field)}
                 self.add_match(extra, event)
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         lt = self.conf.get('use_local_time')
         began_time = pretty_ts(ts_to_dt(dots_get(match, self.ts_field)) - self.conf['timeframe'], lt)
         ended_time = pretty_ts(dots_get(match, self.ts_field), lt)
@@ -1015,17 +997,8 @@ class CardinalityRuleType(RuleType):
                     event.update({self.conf['query_key']: qk})
                 self.check_for_match(qk, event, False)
 
-    def add_count_data(self, counts):
-        pass
 
-    def add_terms_data(self, terms):
-        pass
-
-    def add_aggregation_data(self, payload):
-        pass
-
-
-class BaseAggregationRuleType(RuleType):
+class BaseAggregationRuleType(RuleType, AcceptsAggregationDataMixin):
     allowed_aggregations = frozenset(['min', 'max', 'avg', 'sum', 'cardinality', 'value_count'])
 
     def __init__(self, conf: dict):
@@ -1098,11 +1071,11 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
         self.metric_key = 'metric_%s_%s' % (self.conf['metric_agg_key'], self.conf['metric_agg_type'])
         self.conf['aggregation_query_element'] = self.generate_aggregation_query()
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         return 'Threshold violation, %s:%s %s (min: %s, max: %s)\n\n' % (
             self.conf['metric_agg_type'],
             self.conf['metric_agg_key'],
-            match[self.metric_key],
+            extra[self.metric_key],
             self.conf.get('min_threshold'),
             self.conf.get('max_threshold'),
         )
@@ -1225,14 +1198,17 @@ class SpikeMetricAggregationRuleType(BaseAggregationRuleType, SpikeRuleType):
             # Handle unpack of lowest level
             del qk[-1]
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         message = 'An abnormal %s of %s (%s) occurred around %s.\n' % (
-            self.conf['metric_agg_type'], self.conf['metric_agg_key'], round(match['spike_count']),
+            self.conf['metric_agg_type'], self.conf['metric_agg_key'], round(extra['spike_count']),
             pretty_ts(dots_get(match, self.ts_field), self.conf['use_local_time']))
         message += 'Preceding that time, there was %s of %s of (%s) within %s\n\n' % (
             self.conf['metric_agg_type'], self.conf['metric_agg_key'],
-            round(match['reference_count']), self.conf['timeframe'])
+            round(extra['reference_count']), self.conf['timeframe'])
         return message
+
+    def check_for_matches(self, timestamp, query_key, aggregation_data):
+        raise Exception('Method not used by SpikeMetricAggregationRuleType')
 
 
 class PercentageMatchRuleType(BaseAggregationRuleType):
@@ -1250,13 +1226,13 @@ class PercentageMatchRuleType(BaseAggregationRuleType):
         self.match_bucket_filter = self.conf['match_bucket_filter']
         self.conf['aggregation_query_element'] = self.generate_aggregation_query()
 
-    def get_match_str(self, match: dict) -> str:
+    def get_match_str(self, extra: dict, match: dict) -> str:
         percentage_format_string = self.conf.get('percentage_format_string', '%s')
         return 'Percentage violation, value: %s (min: %s, max: %s) of %s items.\n\n' % (
-            (percentage_format_string % match['percentage']),
+            (percentage_format_string % extra['percentage']),
             self.conf.get('min_percentage'),
             self.conf.get('max_percentage'),
-            match['denominator']
+            extra['denominator']
         )
 
     def generate_aggregation_query(self):

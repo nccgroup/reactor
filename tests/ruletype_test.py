@@ -113,7 +113,7 @@ def test_event_window():
 def test_any():
     hits = gen_hits(1)
     rule = AnyRuleType({})
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 1
     for hit, match in zip(hits, rule.matches):
         assert_match_has(match, {'key', 'num_events', 'began_at', 'ended_at'}, hit)
@@ -125,7 +125,7 @@ def test_blacklist():
             'compare_key': 'term',
             'timestamp_field': '@timestamp'}
     rule = BlacklistRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 2
     assert_matches_have(rule.matches, [('term', 'bad'), ('term', 'really bad')])
 
@@ -137,7 +137,7 @@ def test_whitelist_ignore_null_true():
             'ignore_null': True,
             'timestamp_field': '@timestamp'}
     rule = WhitelistRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 2
     assert_matches_have(rule.matches, [('term', 'bad'), ('term', 'really bad')])
 
@@ -149,7 +149,7 @@ def test_whitelist_ignore_null_false():
             'ignore_null': False,
             'timestamp_field': '@timestamp'}
     rule = WhitelistRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 3
     assert_matches_have(rule.matches, [('term', 'bad'), ('term', 'really bad'), ('no_term', 'bad')])
 
@@ -166,7 +166,7 @@ def test_change():
             'ignore_null': True,
             'timestamp_field': '@timestamp'}
     rule = ChangeRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert_matches_have(rule.matches, [('term', 'bad', 'second_term', 'no')])
 
 
@@ -182,7 +182,7 @@ def test_change_unhashable_qk():
             'ignore_null': True,
             'timestamp_field': '@timestamp'}
     rule = ChangeRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert_matches_have(rule.matches, [('term', 'bad', 'second_term', 'no')])
 
 
@@ -198,7 +198,7 @@ def test_change_ignore_null_false():
             'ignore_null': False,
             'timestamp_field': '@timestamp'}
     rule = ChangeRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert_matches_have(rule.matches, [('username', 'reactor'), ('term', 'bad', 'second_term', 'no')])
 
 
@@ -215,7 +215,7 @@ def test_change_with_timeframe():
             'timeframe': datetime.timedelta(seconds=2),
             'timestamp_field': '@timestamp'}
     rule = ChangeRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert_matches_have(rule.matches, [('term', 'bad', 'second_term', 'no')])
 
 
@@ -232,7 +232,7 @@ def test_change_with_timeframe_no_matches():
             'timeframe': datetime.timedelta(seconds=1),
             'timestamp_field': '@timestamp'}
     rule = ChangeRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert rule.matches == []
 
 
@@ -243,7 +243,7 @@ def test_frequency():
             'timestamp_field': 'blah',
             'attach_related': False}
     rule = FrequencyRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 1
 
     # garbage collection
@@ -260,7 +260,7 @@ def test_frequency_with_qk():
             'timestamp_field': 'blah',
             'attach_related': False}
     rule = FrequencyRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 1
 
     # garbage collection
@@ -277,7 +277,7 @@ def test_frequency_with_no_matches():
             'timestamp_field': 'blah',
             'attach_related': False}
     rule = FrequencyRuleType(conf)
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 0
 
 
@@ -288,23 +288,23 @@ def test_frequency_out_of_order():
             'timestamp_field': 'blah',
             'attach_related': False}
     rule = FrequencyRuleType(conf)
-    rule.add_data(hits[:10])
+    rule.add_hits_data(hits[:10])
     assert len(rule.matches) == 0
 
     # Try to add hits from before the first occurrence
     old_hits = gen_hits(1, timestamp_field='blah', offset={'hours': -1})
-    rule.add_data(old_hits)
+    rule.add_hits_data(old_hits)
     assert len(rule.matches) == 0
 
-    rule.add_data(hits[15:20])
+    rule.add_hits_data(hits[15:20])
     assert len(rule.matches) == 0
-    rule.add_data(hits[10:15])
+    rule.add_hits_data(hits[10:15])
     assert len(rule.matches) == 0
-    rule.add_data(hits[20:55])
+    rule.add_hits_data(hits[20:55])
     assert len(rule.matches) == 0
-    rule.add_data(hits[57:])
+    rule.add_hits_data(hits[57:])
     assert len(rule.matches) == 0
-    rule.add_data(hits[55:57])
+    rule.add_hits_data(hits[55:57])
     assert len(rule.matches) == 1
 
     # garbage collection
@@ -386,11 +386,11 @@ def test_flatline():
     rule = FlatlineRuleType(conf)
 
     # 1 hit should not cause an alert until after at least 30 seconds pass
-    rule.add_data(gen_hits(1))
+    rule.add_hits_data(gen_hits(1))
     assert rule.matches == []
 
     # Add hits with timestamps 12:00:00 --> 12:00:09
-    rule.add_data(gen_hits(10))
+    rule.add_hits_data(gen_hits(10))
 
     # This will be run at the end of the hits
     rule.garbage_collect(gen_timestamp(11))
@@ -405,7 +405,7 @@ def test_flatline():
     assert len(rule.matches) == 2
 
     # Add hits with timestamps 12:00:30 --> 12:00:39
-    rule.add_data(gen_hits(10, offset={'seconds': 30}))
+    rule.add_hits_data(gen_hits(10, offset={'seconds': 30}))
     assert len(rule.matches) == 2
 
     # Now that there is data in the last 30 seconds, no more matches should be added
@@ -445,9 +445,9 @@ def test_flatline_with_qk():
     rule = FlatlineRuleType(conf)
 
     # Adding two separate query keys, the flatline rule should not trigger for any
-    rule.add_data(gen_hits(1, qk='key1'))
-    rule.add_data(gen_hits(1, qk='key2'))
-    rule.add_data(gen_hits(1, qk='key3'))
+    rule.add_hits_data(gen_hits(1, qk='key1'))
+    rule.add_hits_data(gen_hits(1, qk='key2'))
+    rule.add_hits_data(gen_hits(1, qk='key3'))
     assert rule.matches == []
 
     # This will be run at the end of the hits
@@ -455,7 +455,7 @@ def test_flatline_with_qk():
     assert rule.matches == []
 
     # Add new data from key3. It will not immediately cause an alert
-    rule.add_data(gen_hits(1, offset={'seconds': 20}, qk='key3'))
+    rule.add_hits_data(gen_hits(1, offset={'seconds': 20}, qk='key3'))
 
     # key1 and key2 have not had any new data, so they will trigger the flatline alert
     rule.garbage_collect(gen_timestamp(45))
@@ -479,7 +479,7 @@ def test_flatline_with_forget_qk():
     rule = FlatlineRuleType(conf)
 
     # Adding two separate query keys, the flatline rule should not trigger for either
-    rule.add_data(gen_hits(1, qk='key1'))
+    rule.add_hits_data(gen_hits(1, qk='key1'))
     assert rule.matches == []
 
     # This will be run at the end of the hits
@@ -527,15 +527,15 @@ def test_spike():
     rule = SpikeRuleType(conf)
 
     # Half rate of hits until
-    rule.add_data(hits[:20:2])
+    rule.add_hits_data(hits[:20:2])
     assert len(rule.matches) == 0
 
     # Double the rate of hits - must wait 2 * timeframe before will alert again
-    rule.add_data(hits[20:61])
+    rule.add_hits_data(hits[20:61])
     assert len(rule.matches) == 1
 
     # Halve the rate of hits
-    rule.add_data(hits[61::2])
+    rule.add_hits_data(hits[61::2])
     assert len(rule.matches) == 2
 
 
@@ -550,15 +550,15 @@ def test_spike_up():
     rule = SpikeRuleType(conf)
 
     # Half rate of hits until
-    rule.add_data(hits[:20:2])
+    rule.add_hits_data(hits[:20:2])
     assert len(rule.matches) == 0
 
     # Double the rate of hits - must wait 2 * timeframe before will alert again
-    rule.add_data(hits[20:61])
+    rule.add_hits_data(hits[20:61])
     assert len(rule.matches) == 1
 
     # Halve the rate of hits
-    rule.add_data(hits[61::2])
+    rule.add_hits_data(hits[61::2])
     assert len(rule.matches) == 1
 
 
@@ -573,15 +573,15 @@ def test_spike_down():
     rule = SpikeRuleType(conf)
 
     # Half rate of hits until
-    rule.add_data(hits[:20:2])
+    rule.add_hits_data(hits[:20:2])
     assert len(rule.matches) == 0
 
     # Double the rate of hits - must wait 2 * timeframe before will alert again
-    rule.add_data(hits[20:61])
+    rule.add_hits_data(hits[20:61])
     assert len(rule.matches) == 0
 
     # Halve the rate of hits
-    rule.add_data(hits[61::2])
+    rule.add_hits_data(hits[61::2])
     assert len(rule.matches) == 1
 
 
@@ -596,16 +596,16 @@ def test_spike_with_threshold_ref():
     rule = SpikeRuleType(conf)
 
     # Start with a
-    rule.add_data(hits[:50:8])
+    rule.add_hits_data(hits[:50:8])
     assert len(rule.matches) == 0
 
-    rule.add_data(hits[50:100:4])
+    rule.add_hits_data(hits[50:100:4])
     assert len(rule.matches) == 0
 
-    rule.add_data(hits[100:300:2])
+    rule.add_hits_data(hits[100:300:2])
     assert len(rule.matches) == 0
 
-    rule.add_data(hits[300:])
+    rule.add_hits_data(hits[300:])
     assert len(rule.matches) == 1
 
 
@@ -621,13 +621,13 @@ def test_spike_with_threshold_cur():
     rule = SpikeRuleType(conf)
 
     # Start with a
-    rule.add_data(hits[:50:4])
+    rule.add_hits_data(hits[:50:4])
     assert len(rule.matches) == 0
 
-    rule.add_data(hits[50:100:2])
+    rule.add_hits_data(hits[50:100:2])
     assert len(rule.matches) == 0
 
-    rule.add_data(hits[100:])
+    rule.add_hits_data(hits[100:])
     assert len(rule.matches) == 1
 
 
@@ -644,11 +644,11 @@ def test_spike_with_alert_on_new_data():
     rule = SpikeRuleType(conf)
 
     # Fill up the baseline ref and cur windows
-    rule.add_data(hits)
+    rule.add_hits_data(hits)
     assert len(rule.matches) == 0
 
     # Trigger an alert with new data from another username
-    rule.add_data(gen_hits(30, username='not-reactor', offset={'seconds': 100}))
+    rule.add_hits_data(gen_hits(30, username='not-reactor', offset={'seconds': 100}))
     assert len(rule.matches) == 1
 
 
@@ -665,15 +665,15 @@ def test_spike_with_qk():
     rule = SpikeRuleType(conf)
 
     # Half rate of hits until
-    rule.add_data(hits[:20:2])
+    rule.add_hits_data(hits[:20:2])
     assert len(rule.matches) == 0
 
     # Double the rate of hits - must wait 2 * timeframe before will alert again
-    rule.add_data(hits[20:61])
+    rule.add_hits_data(hits[20:61])
     assert len(rule.matches) == 1
 
     # Halve the rate of hits
-    rule.add_data(hits[61::2])
+    rule.add_hits_data(hits[61::2])
     assert len(rule.matches) == 2
 
 
@@ -686,7 +686,7 @@ def test_spike_deep_key():
             'query_key': 'foo.bar.baz'}
     rule = SpikeRuleType(conf)
 
-    rule.add_data(gen_hits(1, foo={'bar': {'baz': 'qux'}}))
+    rule.add_hits_data(gen_hits(1, foo={'bar': {'baz': 'qux'}}))
     assert 'qux' in rule.cur_windows
 
 
@@ -871,23 +871,23 @@ def test_new_term():
     rule.seen_values = {'a': {'key1', 'key2'}, 'b': {'key1', 'key2'}}
 
     # key1 and key2 shouldn't cause a match
-    rule.add_data(gen_hits(1, a='key1', b='key2'))
+    rule.add_hits_data(gen_hits(1, a='key1', b='key2'))
     assert len(rule.matches) == 0
 
     # Neither will missing values
-    rule.add_data(gen_hits(1, a='key2', offset={'seconds': 1}))
+    rule.add_hits_data(gen_hits(1, a='key2', offset={'seconds': 1}))
     assert len(rule.matches) == 0
 
     # key3 causes an alert for field b
-    rule.add_data(gen_hits(1, b='key3', offset={'seconds': 2}))
+    rule.add_hits_data(gen_hits(1, b='key3', offset={'seconds': 2}))
     assert len(rule.matches) == 1
     assert rule.matches[0][0]['new_field'] == 'b'
     assert rule.matches[0][0]['new_value'] == 'key3'
 
     # key3 doesn't cause another alert for field b but does for field a
-    rule.add_data(gen_hits(1, b='key3', offset={'seconds': 3}))
+    rule.add_hits_data(gen_hits(1, b='key3', offset={'seconds': 3}))
     assert len(rule.matches) == 1
-    rule.add_data(gen_hits(1, a='key3', offset={'seconds': 4}))
+    rule.add_hits_data(gen_hits(1, a='key3', offset={'seconds': 4}))
     assert len(rule.matches) == 2
 
 
@@ -903,11 +903,11 @@ def test_new_term_with_alert_on_missing_field():
     rule.seen_values = {'a': {'key1', 'key2'}, 'b': {'key1', 'key2'}}
 
     # key1 and key2 shouldn't cause a match
-    rule.add_data(gen_hits(1, a='key1', b='key2'))
+    rule.add_hits_data(gen_hits(1, a='key1', b='key2'))
     assert len(rule.matches) == 0
 
     # Missing values should cause a match
-    rule.add_data(gen_hits(1, a='key2', offset={'seconds': 1}))
+    rule.add_hits_data(gen_hits(1, a='key2', offset={'seconds': 1}))
     assert len(rule.matches) == 1
     assert rule.matches[0][0]['missing_field'] == 'b'
 
@@ -923,23 +923,23 @@ def test_new_term_with_nested_fields():
     rule.seen_values = {'a': {'key1', 'key2'}, 'b.c': {'key1', 'key2'}}
 
     # key1 and key2 shouldn't cause a match
-    rule.add_data(gen_hits(1, a='key1', b={'c': 'key2'}))
+    rule.add_hits_data(gen_hits(1, a='key1', b={'c': 'key2'}))
     assert len(rule.matches) == 0
 
     # Neither will missing values
-    rule.add_data(gen_hits(1, a='key2', offset={'seconds': 1}))
+    rule.add_hits_data(gen_hits(1, a='key2', offset={'seconds': 1}))
     assert len(rule.matches) == 0
 
     # key3 causes an alert for field b.c
-    rule.add_data(gen_hits(1, b={'c': 'key3'}, offset={'seconds': 2}))
+    rule.add_hits_data(gen_hits(1, b={'c': 'key3'}, offset={'seconds': 2}))
     assert len(rule.matches) == 1
     assert rule.matches[0][0]['new_field'] == 'b.c'
     assert rule.matches[0][0]['new_value'] == 'key3'
 
     # key3 doesn't cause another alert for field b.c but does for field a
-    rule.add_data(gen_hits(1, b={'c': 'key3'}, offset={'seconds': 3}))
+    rule.add_hits_data(gen_hits(1, b={'c': 'key3'}, offset={'seconds': 3}))
     assert len(rule.matches) == 1
-    rule.add_data(gen_hits(1, a='key3', offset={'seconds': 4}))
+    rule.add_hits_data(gen_hits(1, a='key3', offset={'seconds': 4}))
     assert len(rule.matches) == 2
 
 
@@ -955,11 +955,11 @@ def test_new_term_with_composite_fields():
                         ('d', 'e.f'): {('key1', 'key2', 'key3'), ('key1', 'key2', 'key4')}}
 
     # Composite `key1, key2, key3` already exists, thus no match
-    rule.add_data(gen_hits(1, a='key1', b='key2', c='key3'))
+    rule.add_hits_data(gen_hits(1, a='key1', b='key2', c='key3'))
     assert len(rule.matches) == 0
 
     # Composite `key1, key2, key5` is a new term, thus a match
-    rule.add_data(gen_hits(1, a='key1', b='key2', c='key5'))
+    rule.add_hits_data(gen_hits(1, a='key1', b='key2', c='key5'))
     assert len(rule.matches) == 1
     assert rule.matches[0][0]['new_field'] == ('a', 'b', 'c')
     assert rule.matches[0][1]['a'] == 'key1'
@@ -967,11 +967,11 @@ def test_new_term_with_composite_fields():
     assert rule.matches[0][1]['c'] == 'key5'
 
     # New values in other fields that are not part of the composite key should not cause a match
-    rule.add_data(gen_hits(1, a='key1', b='key2', c='key4', d='unrelated_value'))
+    rule.add_hits_data(gen_hits(1, a='key1', b='key2', c='key4', d='unrelated_value'))
     assert len(rule.matches) == 1
 
     # Verify nested fields work properly, key6 causes a match for nested field `e.f`
-    rule.add_data(gen_hits(1, d='key4', e={'f': 'key6'}))
+    rule.add_hits_data(gen_hits(1, d='key4', e={'f': 'key6'}))
     assert len(rule.matches) == 2
     assert rule.matches[1][0]['new_field'] == ('d', 'e.f')
     assert rule.matches[1][1]['d'] == 'key4'
@@ -991,7 +991,7 @@ def test_new_term_with_composite_fields_and_alert_on_missing_field():
                         ('d', 'e.f'): {('key1', 'key2', 'key3'), ('key1', 'key2', 'key4')}}
 
     # Composite `key1, key2, key5` is a new term, thus a match
-    rule.add_data(gen_hits(1, a='key1', b='key2'))
+    rule.add_hits_data(gen_hits(1, a='key1', b='key2'))
     assert len(rule.matches) == 2
     assert rule.matches[0][0]['missing_field'] == ('a', 'b', 'c')
     assert rule.matches[1][0]['missing_field'] == ('d', 'e.f')
@@ -1142,22 +1142,22 @@ def test_cardinality_max():
     rule = CardinalityRuleType(conf)
 
     # Add 4 different user names
-    rule.add_data(gen_hits(['userA', 'userB', 'userC', 'userD'], username=lambda x: x))
+    rule.add_hits_data(gen_hits(['userA', 'userB', 'userC', 'userD'], username=lambda x: x))
     assert len(rule.matches) == 0
     rule.garbage_collect(gen_timestamp(4))
 
     # Add a duplicate, stay at 4 cardinality
-    rule.add_data(gen_hits(1, username='userB', offset={'seconds': 6}))
+    rule.add_hits_data(gen_hits(1, username='userB', offset={'seconds': 6}))
     rule.garbage_collect(gen_timestamp(6))
     assert len(rule.matches) == 0
 
     # Next unique will trigger
-    rule.add_data(gen_hits(1, username='new-user', offset={'seconds': 8}))
+    rule.add_hits_data(gen_hits(1, username='new-user', offset={'seconds': 8}))
     rule.garbage_collect(gen_timestamp(8))
     assert len(rule.matches) == 1
 
     # 15 minutes later, adding more will not trigger an alert
-    rule.add_data(gen_hits(['userX', 'userY', 'userZ'], username=lambda x: x, offset={'minutes': 15}))
+    rule.add_hits_data(gen_hits(['userX', 'userY', 'userZ'], username=lambda x: x, offset={'minutes': 15}))
     assert len(rule.matches) == 1
     rule.garbage_collect(gen_timestamp(4, offset={'minutes': 15}))
 
@@ -1171,12 +1171,12 @@ def test_cardinality_max_with_qk():
     rule = CardinalityRuleType(conf)
 
     # Add 3 different user names, one value each
-    rule.add_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x))
+    rule.add_hits_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x))
     rule.garbage_collect(gen_timestamp(3))
     assert len(rule.matches) == 0
 
     # Add 3 more unique values for `userC`, should cause two matches
-    rule.add_data(gen_hits(['bar', 'baz', 'bux'], username='userC', foo=lambda x: x, offset={'minutes': 5}))
+    rule.add_hits_data(gen_hits(['bar', 'baz', 'bux'], username='userC', foo=lambda x: x, offset={'minutes': 5}))
     rule.garbage_collect(gen_timestamp(3, offset={'minutes': 5}))
     assert len(rule.matches) == 2
     assert rule.matches[0][1]['username'] == 'userC'
@@ -1193,17 +1193,17 @@ def test_cardinality_min():
     rule = CardinalityRuleType(conf)
 
     # Add 2 different user names, no alert because time hasn't elapsed
-    rule.add_data(gen_hits(['userA', 'userB'], username=lambda x: x))
+    rule.add_hits_data(gen_hits(['userA', 'userB'], username=lambda x: x))
     assert len(rule.matches) == 0
     rule.garbage_collect(gen_timestamp(2))
 
     # Add 3 more user names at +5 minutes
-    rule.add_data(gen_hits(['userC', 'userD', 'userE'], username=lambda x: x, offset={'minutes': 5}))
+    rule.add_hits_data(gen_hits(['userC', 'userD', 'userE'], username=lambda x: x, offset={'minutes': 5}))
     rule.garbage_collect(gen_timestamp(3, offset={'minutes': 5}))
     assert len(rule.matches) == 0
 
     # 15 minutes later, adding an existing user name will cause a match
-    rule.add_data(gen_hits(1, username='userE', offset={'minutes': 16}))
+    rule.add_hits_data(gen_hits(1, username='userE', offset={'minutes': 16}))
     rule.garbage_collect(gen_timestamp(1, offset={'minutes': 16}))
     assert len(rule.matches) == 1
 
@@ -1217,12 +1217,12 @@ def test_cardinality_min_with_qk():
     rule = CardinalityRuleType(conf)
 
     # Add 3 different user names, one value each, no alert because time hasn't elapsed
-    rule.add_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x))
+    rule.add_hits_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x))
     rule.garbage_collect(gen_timestamp(3))
     assert len(rule.matches) == 0
 
     # Add 3 more user names at +5 minutes (300 seconds)
-    rule.add_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x, offset=300))
+    rule.add_hits_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x, offset=300))
     rule.garbage_collect(gen_timestamp(3, offset={'minutes': 5}))
     assert len(rule.matches) == 0
 
@@ -1240,27 +1240,27 @@ def test_cardinality_nested_cardinality_field():
 
     # Add 4 different IPs
     ips = ['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4']
-    rule.add_data(gen_hits(ips, d=lambda x: {'ip': x}))
+    rule.add_hits_data(gen_hits(ips, d=lambda x: {'ip': x}))
     rule.garbage_collect(gen_timestamp(4))
     assert len(rule.matches) == 0
 
     # Add a duplicate, stay at a cardinality of 4
-    rule.add_data(gen_hits(1, d={'ip': ips[3]}, offset=5))
+    rule.add_hits_data(gen_hits(1, d={'ip': ips[3]}, offset=5))
     rule.garbage_collect(gen_timestamp(5))
     assert len(rule.matches) == 0
 
     # Add an event with no IP, stay at a cardinality of 4
-    rule.add_data(gen_hits(1, offset=6))
+    rule.add_hits_data(gen_hits(1, offset=6))
     rule.garbage_collect(gen_timestamp(6))
     assert len(rule.matches) == 0
 
     # Unique IP will cause a match
-    rule.add_data(gen_hits(1, d={'ip': '10.0.0.5'}, offset=10))
+    rule.add_hits_data(gen_hits(1, d={'ip': '10.0.0.5'}, offset=10))
     rule.garbage_collect(gen_timestamp(10))
     assert len(rule.matches) == 1
 
     # 15 minutes later, adding more will not trigger a match
-    rule.add_data(gen_hits(['10.0.0.6', '10.0.0.7', '10.0.0.7'], d=lambda x: {'ip': x}, offset={'minutes': 15}))
+    rule.add_hits_data(gen_hits(['10.0.0.6', '10.0.0.7', '10.0.0.7'], d=lambda x: {'ip': x}, offset={'minutes': 15}))
     assert len(rule.matches) == 1
 
 
@@ -1557,7 +1557,7 @@ def test_percentage_match_with_qk():
     rule.check_for_matches(gen_timestamp(), 'qk_val', gen_percentage_match_agg(76.666666667, 24))
     assert len(rule.matches) == 1
     assert rule.matches[0][1]['qk'] == 'qk_val'
-    assert '76.1589403974' in rule.get_match_str(rule.matches[0][0])
+    assert '76.1589403974' in rule.get_match_str(*rule.matches[0])
     conf['percentage_format_string'] = '%.2f'
-    assert '76.16' in rule.get_match_str(rule.matches[0][0])
+    assert '76.16' in rule.get_match_str(*rule.matches[0])
 

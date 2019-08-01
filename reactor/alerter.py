@@ -24,8 +24,9 @@ class DateTimeEncoder(json.JSONEncoder):
 class BasicMatchString(object):
     """ Creates a string containing fields in match for the given rule. """
 
-    def __init__(self, rule: Rule, match):
+    def __init__(self, rule: Rule, extra: dict, match: dict):
         self.rule = rule
+        self.extra = extra
         self.match = match
 
     def _ensure_new_line(self):
@@ -67,7 +68,7 @@ class BasicMatchString(object):
         self.text += alert_text
 
     def _add_rule_text(self):
-        self.text += self.rule.type.get_match_str(self.match)
+        self.text += self.rule.type.get_match_str(self.extra, self.match)
 
     def _add_top_counts(self):
         for key, counts in self.match.items():
@@ -183,7 +184,7 @@ class Alerter(object):
         body = self.get_aggregation_summary_text(alerts)
         if self.rule.conf('alert_text_type') != 'aggregation_summary_only':
             for alert in alerts:
-                body += str(BasicMatchString(self.rule, alert['match_body']))
+                body += str(BasicMatchString(self.rule, alert['match_data'], alert['match_body']))
                 # Separate text of aggregated alerts with dashes
                 if len(alerts) > 1:
                     body += '\n' + ('-'*20) + '\n'
@@ -258,7 +259,7 @@ class DebugAlerter(Alerter):
                 reactor_logger.log(self.conf['level'], 'Alert for %s at %s:',
                                    self.rule.name, dots_get(match_body, ts_field))
 
-            reactor_logger.log(self.conf['level'], str(BasicMatchString(self.rule, match_body)))
+            reactor_logger.log(self.conf['level'], str(BasicMatchString(self.rule, alert['match_data'], match_body)))
 
     def get_info(self):
         return {'type': 'debug',
@@ -279,7 +280,7 @@ class TestAlerter(Alerter):
             if self.conf['format'] == 'json':
                 formatted_str.append(json.dumps(alert, cls=DateTimeEncoder, sort_keys=False, indent=None))
             else:
-                formatted_str.append(str(BasicMatchString(self.rule, alert['match_body'])) + ('-' * 80))
+                formatted_str.append(str(BasicMatchString(self.rule, alert['match_data'], alert['match_body'])) + ('-' * 80))
 
         # Print the formatted alerts
         if self.conf['output'] == 'stdout':
