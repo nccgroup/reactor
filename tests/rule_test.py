@@ -18,7 +18,7 @@ def gen_rule(rule_type: RuleType = None, **kwargs):
 def gen_hits(size, timestamp_field='@timestamp', fields=None, **kwargs):
     hits = []
     for n in range(size):
-        ts = ts_to_dt('2019-07-26T12:%s:%sZ' % (n / 60, n % 60))
+        ts = ts_to_dt('2019-07-26T12:%s:%sZ' % (n // 60, n % 60))
         hit = {
             '_id': str(n),
             '_index': 'reactor_logs',

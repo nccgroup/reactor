@@ -567,7 +567,7 @@ class Client(object):
                 if now - timestamp > buffer_time:
                     stale_silences.append(_id)
                     # TODO: Run a final update on the silenced alert
-            map(self.silence_cache[rule.uuid].pop, stale_silences)
+            list(map(self.silence_cache[rule.uuid].pop, stale_silences))
 
         # Clear up the silence index in the writeback elasticsearch
         res = self.es_client.search(index=self.get_writeback_index('silence'), doc_type='_doc', body={
@@ -588,7 +588,7 @@ class Client(object):
         for _id, timestamp in rule.processed_hits.items():
             if now - timestamp > buffer_time:
                 stale_hits.append(_id)
-        map(rule.processed_hits.pop, stale_hits)
+        list(map(rule.processed_hits.pop, stale_hits))
 
     def alert(self, alerts, rule, alert_time=None, retried=False, silenced=False) -> int:
         """ Wraps alerting, Kibana linking and enhancements in an exception handler. """

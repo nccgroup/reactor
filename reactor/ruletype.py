@@ -237,7 +237,7 @@ class WhitelistRuleType(CompareRuleType):
 
     def __init__(self, conf: dict):
         super(WhitelistRuleType, self).__init__(conf)
-        self.expand_entries('blacklist')
+        self.expand_entries('whitelist')
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
         # Add the whitelist to the filter
@@ -391,13 +391,13 @@ class FrequencyRuleType(RuleType):
         for key, window in self.occurrences.items():
             if timestamp - dots_get(window.data[-1][0], self.ts_field) > self.conf['timeframe']:
                 stale_keys.append(key)
-        map(self.occurrences.pop, stale_keys)
+        list(map(self.occurrences.pop, stale_keys))
 
     def add_count_data(self, counts):
         """ Add count data to the rule. Data should be of the form {ts: count}. """
         if len(counts) > 1:
             raise ReactorException('add_count_data can only accept one count at a time')
-        (ts, count), = counts.items()
+        (ts, count), = list(counts.items())
 
         event = ({self.ts_field: ts}, count)
         self.occurrences.setdefault('all', EventWindow(self.conf['timeframe'], self.get_ts)).append(event)
@@ -484,7 +484,7 @@ class FlatlineRuleType(FrequencyRuleType):
         # We add an event with a count of zero to the EventWindow for each key. This will cause the EventWindow
         # to remove events that occurred more than one timeframe ago, and call on_remove on them.
         default = ['all'] if 'query_key' not in self.conf else []
-        for key in self.occurrences.keys() or default:
+        for key in list(self.occurrences.keys()) or default:
             event = ({self.ts_field: timestamp}, 0)
             self.occurrences.setdefault(key, EventWindow(self.conf['timeframe'], self.get_ts)).append(event)
             self.first_event.setdefault(key, timestamp)
@@ -533,7 +533,7 @@ class SpikeRuleType(RuleType):
             if not self.ref_window_filled_once:
                 return
             # This rule is not using alert_on_new_data (with query_key) OR
-            if not (self.conf['query_key'] and self.conf['alert_on_new _data']):
+            if not (self.conf.get('query_key') and self.conf.get('alert_on_new_data')):
                 return
             # An alert for this qk has recently fired
             if qk in self.skip_checks and dots_get(event, self.ts_field) < self.skip_checks[qk]:
@@ -566,13 +566,13 @@ class SpikeRuleType(RuleType):
         """ Determines if an event spike or dip is happening. """
         # Apply threshold limits
         if self.field_value is None:
-            if cur < self.conf.get('threshold_cur', 0) or ref < self.conf.get('threshold_ref'):
+            if cur < self.conf.get('threshold_cur', 0) or ref < self.conf.get('threshold_ref', 0):
                 return False
         elif ref is None or ref == 0 or cur is None or cur == 0:
             return False
 
-        spike_dn = cur <= ref / self.conf['spike_height']
-        spike_up = cur >= ref * self.conf['spike_height']
+        spike_dn = cur <= (ref / self.conf['spike_height'])
+        spike_up = cur >= (ref * self.conf['spike_height'])
 
         return (spike_up and self.conf['spike_type'] in ['both', 'up']) or \
                (spike_dn and self.conf['spike_type'] in ['both', 'down'])
@@ -590,7 +590,7 @@ class SpikeRuleType(RuleType):
                     try:
                         count = int(count)
                     except ValueError:
-                        reactor_logger.warn('%s is not a number: %s', self.field_value, count)
+                        reactor_logger.warning('%s is not a number: %s', self.field_value, count)
                     else:
                         self.handle_event(event, count, qk)
             else:
@@ -604,7 +604,6 @@ class SpikeRuleType(RuleType):
         else:
             spike_count = self.cur_windows[qk].mean()
             reference_count = self.ref_windows[qk].mean()
-        qk = self.conf.get('query_key', None)
         extra = {'spike_count': spike_count,
                  'reference_count': reference_count,
                  'key': hashable(dots_get(event, qk)) if qk else 'all',
@@ -690,8 +689,8 @@ class NewTermRuleType(RuleType):
                 raise ConfigException('If use_terms_query is specified, you cannot specify different query_key and fields')
             if not self.conf.get('query_key').endswith('.keyword') and not self.conf.get('query_key').endswith('.raw'):
                 if self.conf.get('use_keyword_postfix', True):
-                    reactor_logger.warn('If query_key is a non-keyword field, you must set '
-                                        'use_keyword_postfix to false, or add .keyword/.raw to your query_key')
+                    reactor_logger.warning('If query_key is a non-keyword field, you must set '
+                                           'use_keyword_postfix to false, or add .keyword/.raw to your query_key')
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
         """ Performs a terms aggregation for each field to get every existing term. """
@@ -719,6 +718,7 @@ class NewTermRuleType(RuleType):
             tmp_end = min(start + step, end)
             time_filter = {self.ts_field: {'lt': dt_to_ts(tmp_end),
                                            'gte': dt_to_ts(tmp_start)}}
+            query_template['filter'] = {'bool': {'must': [{'range': time_filter}]}}
             query = {'aggs': {'filtered': query_template}}
             if 'filter' in self.conf:
                 for item in self.conf['filter']:
@@ -726,7 +726,7 @@ class NewTermRuleType(RuleType):
 
             # For composite keys, we will need to perform sub-aggregations
             if type(field) == list:
-                self.seen_values.setdefault(tuple(field), [])
+                self.seen_values.setdefault(tuple(field), set())
                 level = query_template['aggs']
                 # Iterate on each part of the composite key and add a sub-aggs clause to the elasticsearch query
                 for i, sub_field in enumerate(field):
@@ -739,7 +739,7 @@ class NewTermRuleType(RuleType):
                         level['values']['aggs'] = {'values': {'terms': copy.deepcopy(field_name)}}
                         level = level['values']['aggs']
             else:
-                self.seen_values.setdefault(field, [])
+                self.seen_values.setdefault(field, set())
                 # For non-composite keys, only a single agg is needed
                 if self.conf.get('use_keyword_postfix', True):
                     field_name['field'] = add_raw_postfix(field, es_version)
@@ -760,15 +760,15 @@ class NewTermRuleType(RuleType):
                         # Make it a tuple since it can be hashed and used in dictionary lookups
                         for bucket in buckets:
                             # We need to walk down the hierarchy and obtain the value at each level
-                            self.seen_values[tuple(field)] += self.flatten_aggregation_hierarchy(bucket)
+                            self.seen_values[tuple(field)] |= self.flatten_aggregation_hierarchy(bucket)
                     else:
-                        keys = [bucket['key'] for bucket in buckets]
-                        self.seen_values[field] += keys
+                        keys = {bucket['key'] for bucket in buckets}
+                        self.seen_values[field] |= keys
                 else:
                     if type(field) == list:
-                        self.seen_values.setdefault(tuple(field), [])
+                        self.seen_values.setdefault(tuple(field), set())
                     else:
-                        self.seen_values.setdefault(field, [])
+                        self.seen_values.setdefault(field, set())
                 if tmp_start == tmp_end:
                     break
                 tmp_start = tmp_end
@@ -782,14 +782,14 @@ class NewTermRuleType(RuleType):
                         # If we don't have any results, it could either be because of the absence of any baseline data
                         # OR it may be because the composite key contained a non-primitive type. Either way, give the
                         # end-users a heads up to help them debug what might be going on/
-                        reactor_logger.warn(
+                        reactor_logger.warning(
                             'No results were found from all sub-aggregations. This can either indicate that there is '
                             'no baseline data OR that a non-primitive field was used in a composite key.'
                         )
                     else:
-                        reactor_logger.warn('Found no values for %s', field)
+                        reactor_logger.warning('Found no values for %s', field)
                     continue
-                self.seen_values[key] = list(set(values))
+                self.seen_values[key] = set(values)
                 reactor_logger.info('Found %s unique values for %s', len(self.seen_values[key]), key)
 
     def flatten_aggregation_hierarchy(self, root, hierarchy_tuple=()):
@@ -865,16 +865,16 @@ class NewTermRuleType(RuleType):
 
         A similar formatting will be performed in the add_data method and used as the basis for comparison.
         """
-        results = []
+        results = set()
         # If there are more aggregations hierarchies left, traverse them
         if 'values' in root:
-            results += self.flatten_aggregation_hierarchy(root['values']['buckets'], hierarchy_tuple + (root['key'],))
+            results |= self.flatten_aggregation_hierarchy(root['values']['buckets'], hierarchy_tuple + (root['key'],))
         else:
             for node in root:
                 if 'values' in node:
-                    results += self.flatten_aggregation_hierarchy(node, hierarchy_tuple)
+                    results |= self.flatten_aggregation_hierarchy(node, hierarchy_tuple)
                 else:
-                    results.append(hierarchy_tuple + (node['key'],))
+                    results.add(hierarchy_tuple + (node['key'],))
         return results
 
     def add_data(self, data: list):
@@ -883,10 +883,12 @@ class NewTermRuleType(RuleType):
                 value = ()
                 lookup_field = field
                 if type(field) == list:
+                    # For composite keys, make the lookup based on all fields
+                    # Make it a tuple since it can be hashed and used in dictionary lookups
                     lookup_field = tuple(field)
                     for sub_field in field:
                         lookup_result = dots_get(event, sub_field)
-                        if not lookup_field:
+                        if not lookup_result:
                             value = None
                             break
                         value += (lookup_result,)
@@ -895,7 +897,7 @@ class NewTermRuleType(RuleType):
                 if not value and self.conf.get('alert_on_missing_field'):
                     self.add_match(*self.generate_match(lookup_field, None, event=event))
                 elif value:
-                    if value in self.seen_values[lookup_field]:
+                    if value not in self.seen_values[lookup_field]:
                         self.add_match(*self.generate_match(lookup_field, value, event=event))
 
     def generate_match(self, field, value, event: dict = None, timestamp=None) -> (dict, dict):
@@ -912,7 +914,7 @@ class NewTermRuleType(RuleType):
         else:
             extra['new_field'] = field
             extra['new_value'] = value
-            self.seen_values[field].append(value)
+            self.seen_values[field].add(value)
         return extra, event
 
     def add_terms_data(self, terms):
@@ -1003,15 +1005,15 @@ class CardinalityRuleType(RuleType):
                 if timestamp - last_occurrence > self.conf['timeframe']:
                     stale_terms.append((qk, term))
 
+        for qk, term in stale_terms:
+            self.cardinality_cache[qk].pop(term)
+
             # Create a placeholder event for min_cardinality match occurred
             if 'min_cardinality' in self.conf:
                 event = {self.ts_field: timestamp}
                 if 'query_key' in self.conf:
                     event.update({self.conf['query_key']: qk})
                 self.check_for_match(qk, event, False)
-
-        for qk, term in stale_terms:
-            self.cardinality_cache[qk].pop(term)
 
     def add_count_data(self, counts):
         pass
@@ -1033,13 +1035,13 @@ class BaseAggregationRuleType(RuleType):
             if 'seconds' in bucket_interval:
                 self.conf['bucket_interval_period'] = str(bucket_interval['seconds']) + 's'
             elif 'minutes' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['seconds']) + 'm'
+                self.conf['bucket_interval_period'] = str(bucket_interval['minutes']) + 'm'
             elif 'hours' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['seconds']) + 'h'
+                self.conf['bucket_interval_period'] = str(bucket_interval['hours']) + 'h'
             elif 'days' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['seconds']) + 'd'
+                self.conf['bucket_interval_period'] = str(bucket_interval['days']) + 'd'
             elif 'weeks' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['seconds']) + 'w'
+                self.conf['bucket_interval_period'] = str(bucket_interval['weeks']) + 'w'
             else:
                 raise ConfigException('Unsupported window size')
 
@@ -1297,8 +1299,8 @@ class PercentageMatchRuleType(BaseAggregationRuleType):
                     self.add_match(extra, event)
 
     def percentage_violation(self, match_percentage):
-        if 'max_percentage' is self.conf and match_percentage > self.conf['max_percentage']:
+        if 'max_percentage' in self.conf and match_percentage > self.conf['max_percentage']:
             return True
-        if 'min_percentage' is self.conf and match_percentage < self.conf['min_percentage']:
+        if 'min_percentage' in self.conf and match_percentage < self.conf['min_percentage']:
             return True
         return False
