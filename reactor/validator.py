@@ -39,8 +39,6 @@ def extend_with_default(validator_class):
 
     class ConvertToTypeChecker(jsonschema.TypeChecker):
         def is_type(self, instance, node_type):
-            # TODO: I'm not happy with having to use a custom type, need to work out a better way of converting fields
-            #  using jsonschema
             if node_type == 'timedelta':
                 return isinstance(instance, datetime.timedelta)
             else:
@@ -50,7 +48,7 @@ def extend_with_default(validator_class):
         # Set default values
         for prop, sub_schema in properties.items():
             sub_schema = resolve(validator, sub_schema)
-            if 'default' in sub_schema:
+            if 'default' in sub_schema and isinstance(instance, dict):
                 instance.setdefault(prop, sub_schema['default'])
 
         # Validate object properties
