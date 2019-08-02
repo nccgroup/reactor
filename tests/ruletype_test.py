@@ -1003,7 +1003,6 @@ def test_new_term_prepare():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    # TODO: test that `window_step_size` changes the number of times `es_client.search` is called during prepare
     rule = NewTermRuleType(conf)
 
     # Mock preparing the rule
@@ -1042,6 +1041,53 @@ def test_new_term_prepare():
         old_ts = gte
 
     assert rule.seen_values == {'a': {'key2', 'key1'}, 'b': {'key2', 'key1'}, 'c.d': {'key2', 'key1'}}
+
+
+def test_new_term_prepare_window_step_size():
+    conf = {'fields': ['a', 'b'],
+            'timestamp_field': '@timestamp',
+            'index': 'reactor_logs',
+            'window_step_size': {'days': 2},
+            'ts_to_dt': ts_to_dt,
+            'dt_to_ts': dt_to_ts}
+    rule = NewTermRuleType(conf)
+
+    # Mock preparing the rule
+    with mock.patch('reactor.util.ElasticSearchClient') as es_client:
+        mock_search_res = {'aggregations': {'filtered': {'values': {'buckets': [{'key': 'key1', 'doc_count': 1},
+                                                                                {'key': 'key2', 'doc_count': 5}]}}}}
+
+        es_client.info.return_value = {'version': {'number': '6.0.0'}}
+        es_client.search.return_value = mock_search_res
+        call_args = []
+
+        # search is called with a mutable dict containing timestamps, this is required to test
+        def record_args(*args, **kwargs):
+            call_args.append((copy.deepcopy(args), copy.deepcopy(kwargs)))
+            return mock_search_res
+
+        es_client.search.side_effect = record_args
+        rule.prepare(es_client)
+
+    # 30 day range, 2 day step, times 2 fields
+    assert es_client.search.call_count == 30
+    assert len(call_args) == 30
+
+    # Assert that all calls have the proper ordering of time ranges
+    old_ts = dt_to_ts(datetime.datetime.min)
+    old_field = ''
+    for call in call_args:
+        field = call[1]['body']['aggs']['filtered']['aggs']['values']['terms']['field']
+        if old_field != field:
+            old_field = field
+            old_ts = dt_to_ts(datetime.datetime.min)
+        gte = call[1]['body']['aggs']['filtered']['filter']['bool']['must'][0]['range']['@timestamp']['gte']
+        assert gte > old_ts
+        lt = call[1]['body']['aggs']['filtered']['filter']['bool']['must'][0]['range']['@timestamp']['lt']
+        assert lt > gte
+        old_ts = gte
+
+    assert rule.seen_values == {'a': {'key2', 'key1'}, 'b': {'key2', 'key1'}}
 
 
 def test_new_term_prepare_with_composite_fields():
