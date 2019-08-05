@@ -330,6 +330,10 @@ class Client(object):
 
     def test_rule(self, rule: Rule, end_time, start_time=None):
         try:
+            # Add a default value for the silence cache and alerts cache
+            self.silence_cache.setdefault(rule.uuid, {})
+            self.alerts_cache.setdefault(rule.uuid, {})
+
             num_matches, alerts_sent, num_silenced = self.run_rule(rule, end_time, start_time)
         except ReactorException as e:
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name})
