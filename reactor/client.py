@@ -359,8 +359,12 @@ class Client(object):
                                id='_internal_handle_config_changes')
         self.scheduler.start()
         while self.running:
-
-            pass
+            # If an end time was specified and it has elapsed
+            if 'end' in self.args and self.args['end'] < dt_now():
+                # If the rule have been loaded and every run has been run once
+                if self.loader.loaded and all([r.has_run_once for r in self.loader]):
+                    reactor_logger.info('Reached end time, shutting down reactor')
+                    self.running = False
         return 0
 
     def stop(self):
@@ -447,6 +451,11 @@ class Client(object):
         else:
             end_time = dt_now()
 
+        # Disable the rule if it has run at least once, an end time was specified, and the end time has elapsed
+        if rule.has_run_once and self.args['end'] and self.args['end'] < dt_now():
+            self.loader.disable(rule.uuid)
+            return
+
         # Apply rules based on execution time limits
         if rule.conf('limit_execution'):
             rule.next_start_time = None
@@ -462,7 +471,6 @@ class Client(object):
                     self.reset_rule_schedule(rule)
 
         # Run the rule
-        rule.has_run_once = True
         try:
             num_matches, alerts_sent, num_silenced = self.run_rule(rule, end_time, rule.initial_start_time)
         except ReactorException as e:
@@ -487,6 +495,9 @@ class Client(object):
         rule.initial_start_time = None
         self.garbage_collect(rule)
         self.reset_rule_schedule(rule)
+        # Mark the rule has having been run at least once
+        rule.has_run_once = True
+        reactor_logger.info('Rule %s run once', rule.name)
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run

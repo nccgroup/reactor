@@ -81,7 +81,10 @@ def parse_duration(value: str) -> datetime.timedelta:
 def parse_timestamp(value: str, ts_format: str = '%Y-%m-%dT%H:%M:%S') -> datetime.datetime:
     """ Convert ``YYYY-MM-DDTHH:MM:SS`` str into a ``datetime`` object. """
     timestamp = datetime.datetime.strptime(value, ts_format)
-    return timestamp.replace(tzinfo=dateutil.tz.tzutc())
+    # If no timezone information provided, assume local timezone
+    if not timestamp.tzinfo:
+        timestamp = timestamp.replace(tzinfo=dateutil.tz.tzlocal())
+    return timestamp
 
 
 class RangeChoice(object):
