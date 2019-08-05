@@ -287,6 +287,8 @@ class TestAlerter(Alerter):
             print(*formatted_str, sep='\n', end='\n', file=sys.stdout)
         elif self.conf['output'] == 'stderr':
             print(*formatted_str, sep='\n', end='\n', file=sys.stderr)
+        elif self.conf['output'] == 'devnull':
+            pass
         else:
             with open(self.conf['output'], self.mode) as f:
                 f.writelines([line + '\n' for line in formatted_str])

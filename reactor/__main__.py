@@ -62,7 +62,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                           help='Start querying from this timestamp')
     run_rule.add_argument('--output',
                           type=str,
-                          metavar='stdout|stderr|FILENAME',
+                          metavar='stdout|stderr|devnull|FILENAME',
                           default='stdout',
                           help='Where to output the alerts')
     run_rule.add_argument('--format',
