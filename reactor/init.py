@@ -68,8 +68,8 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
             pass
 
     if es_client.es_version_at_least(7):
-        # TODO remove doc_type completely when elasticsearch client allows doc_type=None
-        # doc_type is a deprecated feature and will be completely removed in ElasticSearch 8
+        # TODO: remove doc_type completely when elasticsearch client allows doc_type=None
+        #  doc_type is a deprecated feature and will be completely removed in ElasticSearch 8
         reactor_logger.info('Applying mappings for ElasticSearch v7.x')
         es_client.indices.put_mapping(index=conf['index'] + '_alert', doc_type='_doc',
                                       body=es_index_mappings['alert'], include_type_name=True)

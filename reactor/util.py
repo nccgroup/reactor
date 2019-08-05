@@ -3,6 +3,7 @@ import datetime
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Union
 
@@ -35,6 +36,34 @@ class ElasticSearchClient(elasticsearch.Elasticsearch):
     def es_version_at_least(self, major: int, minor: int = 0, patch: int = 0) -> bool:
         """ Check whether a semantic version is at least the specified version. """
         return semantic_at_least(self.es_version, major, minor, patch)
+
+    def wait_until_responsive(self, patience: datetime.timedelta):
+        """ Wait until ElasticSearch becomes responsive (or too much time passes). """
+        patience = patience.total_seconds()
+
+        # Don't poll unless we're asked to
+        if patience <= 0.0:
+            return True
+
+        # Increase logging level
+        cur_level = logging.getLogger("elasticsearch").level
+        try:
+            logging.getLogger("elasticsearch").setLevel(max(logging.ERROR, cur_level))
+
+            # Periodically poll ElasticSearch. Keep going until ElasticSearch is responds
+            # or our patience runs out
+            ref = time.time()
+            while (time.time() - ref) < patience:
+                try:
+                    if self.ping():
+                        return True
+                except elasticsearch.ConnectionError:
+                    pass
+                time.sleep(1.0)
+            reactor_logger.error('Could not reach ElasticSearch at %s', self.transport.hosts)
+            return False
+        finally:
+            logging.getLogger("elasticsearch").setLevel(cur_level)
 
 
 def semantic_at_least(version: tuple, major: int, minor: int = 0, patch: int = 0) -> bool:

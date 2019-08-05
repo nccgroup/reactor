@@ -20,14 +20,16 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         default='config.yaml',
                         help='Global config file')
 
+    patience = argparse.ArgumentParser(add_help=False)
+    patience.add_argument('--patience',
+                          action='store',
+                          dest='timeout',
+                          type=parse_duration,
+                          default='seconds=20',
+                          metavar='units=val',
+                          help='Maximum time to wait for ElasticSearch to become responsive (e.g. seconds=30)')
+
     timestamps = argparse.ArgumentParser(add_help=False)
-    timestamps.add_argument('--patience',
-                            action='store',
-                            dest='timeout',
-                            type=parse_duration,
-                            default='seconds=20',
-                            metavar='units=val',
-                            help='Maximum time to wait for ElasticSearch to become responsive (e.g. seconds=30)')
     timestamps.add_argument('--start',
                             action='store',
                             type=parse_timestamp,
@@ -75,7 +77,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     sub_parser = parser.add_subparsers(title='actions')
 
     # Normal run
-    run_sp = sub_parser.add_parser('run', parents=[config, timestamps], help='Run the reactor client')
+    run_sp = sub_parser.add_parser('run', parents=[config, patience, timestamps], help='Run the reactor client')
     run_sp.set_defaults(action='run')
     run_sp_group = run_sp.add_mutually_exclusive_group()
     run_sp_group.add_argument('--reload',
@@ -113,7 +115,8 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         help='Limit running to the specified rules')
 
     # Initialise command
-    init_sp = sub_parser.add_parser('init', parents=[config], help='Initialise the reactor indices and templates')
+    init_sp = sub_parser.add_parser('init', parents=[config, patience],
+                                    help='Initialise the reactor indices and templates')
     init_sp.set_defaults(action='init')
     init_sp.add_argument('-m', '--mappings',
                          dest='mappings_dir',
@@ -129,20 +132,23 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                          help='Name of the old index to copy the data across from')
 
     # Test command
-    test_sp = sub_parser.add_parser('test', parents=[config, run_rule], help='Test the specified rules')
+    test_sp = sub_parser.add_parser('test', parents=[config, patience, run_rule],
+                                    help='Test the specified rules')
     test_sp.set_defaults(action='test', mode='test')
     test_sp.add_argument('rules',
                          nargs='+',
                          help='List of rules to test')
 
     # Hits command
-    hits_sp = sub_parser.add_parser('hits', parents=[config, run_rule], help='Retrieve the hits for the specified rule')
+    hits_sp = sub_parser.add_parser('hits', parents=[config, patience, run_rule],
+                                    help='Retrieve the hits for the specified rule')
     hits_sp.set_defaults(action='hits', mode='test')
     hits_sp.add_argument('rule',
                          help='The rule to retrieve hits')
 
     # Console command
-    console_sp = sub_parser.add_parser('console', parents=[config], help='Start the reactor console')
+    console_sp = sub_parser.add_parser('console', parents=[config, patience],
+                                       help='Start the reactor console')
     console_sp.set_defaults(action='console')
     console_sp.add_argument('--index',
                             default=None,
@@ -156,7 +162,8 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                             help='Maximum number of hits to retrieve (default: %(default)s)')
 
     # Silence command
-    silence_sp = sub_parser.add_parser('silence', parents=[config], help='Silence a set of rules')
+    silence_sp = sub_parser.add_parser('silence', parents=[config, patience],
+                                       help='Silence a set of rules')
     silence_sp.set_defaults(action='silence')
     silence_sp.add_argument('rules',
                             nargs='+',
@@ -181,9 +188,12 @@ def handle_signal(recv_signal, frame):
 
 def perform_init(config: dict, args: dict) -> int:
     """ Perform the initialise action. """
+    es_client = elasticsearch_client(config['elasticsearch'])
+    if not es_client.wait_until_responsive(args['timeout']):
+        return 1
+
     from reactor.init import create_indices
-    create_indices(elasticsearch_client(config['elasticsearch']),
-                   config, args['recreate'], args['old_index'], args['force'])
+    create_indices(es_client, config, args['recreate'], args['old_index'], args['force'])
     return 0
 
 
