@@ -960,7 +960,7 @@ class Client(object):
 
         if rule.conf('disable_rule_on_error'):
             # TODO: implement rule disabling
-            self.loader.disabled(rule)
+            self.loader.disable(rule.uuid)
             self.scheduler.remove_job(job_id=rule.hash)
             reactor_logger.info('Rule %s disabled', rule.name)
         # TODO: add notification

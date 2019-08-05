@@ -2,6 +2,7 @@ import copy
 import datetime
 import hashlib
 import os
+import typing
 import yaml
 
 import jsonschema
@@ -33,11 +34,11 @@ class RuleLoader(object):
         self.base_config = copy.deepcopy(base_conf)
         self.mappings = mappings
         self.rule_imports = {}
-        self.rules = {}
+        self.rules = {}  # type: typing.Dict[str, Rule]
         self.loaded = False
 
     def __iter__(self) -> Iterator[Rule]:
-        return iter(self.rules.values())
+        return iter(filter(lambda r: not r.disabled, self.rules.values()))
 
     def __contains__(self, item):
         return item in self.rules
@@ -45,8 +46,9 @@ class RuleLoader(object):
     def __len__(self):
         return len(self.rules)
 
-    def items(self):
-        return self.rules.items()
+    def disable(self, rule_id):
+        """ Disable the rule until it is next updated. """
+        self.rules[rule_id].disabled = True
 
     def load(self, args: dict = None) -> List[tuple]:
         """

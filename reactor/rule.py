@@ -24,6 +24,7 @@ class Rule(object):
         self.type = rule_type
         self.hash = None
         self._conf = conf
+        self.disabled = False
 
         # Counters
         self.num_hits = 0
