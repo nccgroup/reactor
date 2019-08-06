@@ -5,6 +5,7 @@ import sys
 from reactor.alerter import TestAlerter
 from reactor.client import Client
 from reactor.config import parse_config
+from reactor.exceptions import ReactorException
 from reactor.util import (
     parse_duration,
     parse_timestamp,
@@ -139,6 +140,14 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                          dest='old_index',
                          help='Name of the old index to copy the data across from')
 
+    # Validate command
+    test_sp = sub_parser.add_parser('validate', parents=[config, run_rule],
+                                    help='Validate the specified rules')
+    test_sp.set_defaults(action='validate', mode='test')
+    test_sp.add_argument('rules',
+                         nargs='+',
+                         help='List of rules to validate')
+
     # Test command
     test_sp = sub_parser.add_parser('test', parents=[config, patience, run_rule],
                                     help='Test the specified rules')
@@ -206,6 +215,17 @@ def perform_init(config: dict, args: dict) -> int:
     from reactor.init import create_indices
     create_indices(es_client, config, args['recreate'], args['old_index'], args['force'])
     return 0
+
+
+def perform_validate(config: dict, args: dict) -> int:
+    try:
+        client = Client(config, args)
+        client.loader.load(args)
+        reactor_logger.info('All specified rules are valid')
+        return 0
+    except ReactorException as e:
+        print(e)
+        return 1
 
 
 def perform_test(config: dict, args: dict) -> int:
@@ -290,6 +310,11 @@ def main(args):
         # Initial Reactor writeback database
         if args['action'] == 'init':
             exit_code = perform_init(config, args)
+
+        # Validate the specified rules
+        elif args['action'] == 'validate':
+            exit_code = perform_validate(config, args)
+            pass
 
         # Test the specified rules
         elif args['action'] == 'test':
