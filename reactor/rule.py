@@ -13,6 +13,7 @@ from reactor.util import (
     dt_now, pretty_ts,
     ts_to_dt, dt_to_ts, unix_to_dt, unixms_to_dt, dt_to_unix, dt_to_unixms, ts_to_dt_with_format, dt_to_ts_with_format,
     total_seconds, add_raw_postfix,
+    format_index,
 )
 from reactor.ruletype import RuleType
 from reactor.kibana import filters_from_kibana
@@ -593,3 +594,17 @@ class Rule(object):
             processed_hits.append(hit['_source'])
 
         return processed_hits
+
+    def get_index(self, start_time=None, end_time=None):
+        index = self.conf('index')
+        add_extra = self.conf('search_extra_index')
+        if self.conf('use_strftime_index'):
+            if start_time and end_time:
+                return format_index(index, start_time, end_time, add_extra)
+            else:
+                # Replace the substring containing format characters with a *
+                format_start = index.find('%')
+                format_end = index.rfind('%') + 2
+                return index[:format_start] + '*' + index[format_end:]
+        else:
+            return index

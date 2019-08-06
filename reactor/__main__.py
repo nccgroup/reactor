@@ -5,7 +5,15 @@ import sys
 from reactor.alerter import TestAlerter
 from reactor.client import Client
 from reactor.config import parse_config
-from reactor.util import parse_duration, parse_timestamp, RangeChoice, elasticsearch_client, dt_now
+from reactor.util import (
+    parse_duration,
+    parse_timestamp,
+    RangeChoice,
+    elasticsearch_client,
+    dt_now,
+    reactor_logger,
+    pretty_ts
+)
 
 import requests
 requests.packages.urllib3.disable_warnings()
@@ -143,6 +151,9 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     hits_sp = sub_parser.add_parser('hits', parents=[config, patience, run_rule],
                                     help='Retrieve the hits for the specified rule')
     hits_sp.set_defaults(action='hits', mode='test')
+    hits_sp.add_argument('--counts',
+                         action='store_true',
+                         help='Only report on the number of hits')
     hits_sp.add_argument('rule',
                          help='The rule to retrieve hits')
 
@@ -223,14 +234,28 @@ def perform_hits(config: dict, args: dict) -> int:
     client.loader.load(args)
 
     for rule in client.loader:
-        alerter = TestAlerter(rule, {'format': args['format'], 'output': args['output']})
+        if args['counts']:
+            hits = rule.get_hits_count(start_time, end_time, rule.get_index(start_time, end_time))
+            reactor_logger.info('Ran from %s to %s "%s": %s query hits',
+                                pretty_ts(start_time, rule.conf('use_local_time')),
+                                pretty_ts(start_time, rule.conf('use_local_time')),
+                                rule.name,
+                                hits[list(hits.keys())[0]])
 
-        rule.type.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
-        rule.set_conf('segment_size', args['timeframe'])
-        rule.max_hits = args['max_hits']
+        else:
+            alerter = TestAlerter(rule, {'format': args['format'], 'output': args['output']})
 
-        hits = client.run_query(rule, start_time, end_time)
-        alerter.alert([{'match_body': hit} for hit in hits])
+            rule.type.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
+            rule.set_conf('segment_size', args['timeframe'])
+            rule.max_hits = args['max_hits']
+
+            hits = client.run_query(rule, start_time, end_time)
+            alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
+            reactor_logger.info('Ran from %s to %s "%s": %s query hits',
+                                pretty_ts(start_time, rule.conf('use_local_time')),
+                                pretty_ts(start_time, rule.conf('use_local_time')),
+                                rule.name,
+                                len(hits))
 
     return 0
 

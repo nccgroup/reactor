@@ -593,18 +593,3 @@ def add_raw_postfix(field, es_version):
     if not field.endswith(end):
         field += end
     return field
-
-
-def get_index(rule, start_time=None, end_time=None):
-    index = rule.conf('index')
-    add_extra = rule.conf('search_extra_index')
-    if rule.conf('use_strftime_index'):
-        if start_time and end_time:
-            return format_index(index, start_time, end_time, add_extra)
-        else:
-            # Replace the substring containing format characters with a *
-            format_start = index.find('%')
-            format_end = index.rfind('%') + 2
-            return index[:format_start] + '*' + index[format_end:]
-    else:
-        return index

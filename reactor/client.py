@@ -20,7 +20,6 @@ from reactor.util import (
     dt_now, dt_to_ts, ts_to_dt, unix_to_dt, pretty_ts,
     dots_get,
     elasticsearch_client,
-    get_index,
 )
 import reactor.kibana
 
@@ -285,7 +284,7 @@ class Client(object):
         start_time = start_time or self.get_index_start(rule.es_client, rule.conf('index'))
         end_time = end_time or dt_to_ts(dt_now)
 
-        index = get_index(rule, start_time, end_time)
+        index = rule.get_index(start_time, end_time)
         complete = False
         data = None
 
@@ -646,7 +645,7 @@ class Client(object):
         if rule.conf('generate_kibana_link') or rule.conf('use_kibana_dashboard'):
             try:
                 if rule.conf('generate_kibana_link'):
-                    kb_link = reactor.kibana.generate_kibana_db(rule, alerts[0]['match_body'], get_index(rule))
+                    kb_link = reactor.kibana.generate_kibana_db(rule, alerts[0]['match_body'], rule.get_index())
                 else:
                     kb_link = reactor.kibana.use_kibana_link(rule, alerts[0]['match_body'])
             except ReactorException as e:
@@ -991,7 +990,7 @@ class Client(object):
         if not number:
             number = rule.conf('top_count_number', 5)
         for key in keys:
-            index = get_index(rule, start_time, end_time)
+            index = rule.get_index(start_time, end_time)
 
             try:
                 hits_terms = rule.get_hits_terms(start_time, end_time, index, key, qk, number)
