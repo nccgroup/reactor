@@ -662,7 +662,6 @@ def test_spike_with_qk():
             'timestamp_field': '@timestamp',
             'query_key': 'username'}
     rule = SpikeRuleType(conf)
-    rule = SpikeRuleType(conf)
 
     # Half rate of hits until
     rule.add_hits_data(hits[:20:2])
@@ -1311,56 +1310,52 @@ def test_cardinality_nested_cardinality_field():
 
 
 def test_base_aggregation_constructor_bucket_interval():
-    conf = {'bucket_interval_timedelta': datetime.timedelta(seconds=10),
-            'buffer_time': datetime.timedelta(minutes=1),
-            'bucket_interval': None,
+    conf = {'bucket_interval': None,
+            'buffer_time': datetime.timedelta(weeks=2),
             'timestamp_field': '@timestamp'}
 
     # Test time period constructor logic
     pairs = [({'seconds': 10}, '10s'), ({'minutes': 5}, '5m'), ({'hours': 4}, '4h'),
-             ({'days': 3}, '3d'), ({'weeks': 2}, '2w')]
+             ({'days': 2}, '2d'), ({'weeks': 2}, '2w')]
     for bucket_interval, bucket_interval_period in pairs:
-        conf['bucket_interval'] = bucket_interval
+        conf['bucket_interval'] = datetime.timedelta(**bucket_interval)
         rule = BaseAggregationRuleType(conf)
         assert rule.conf['bucket_interval_period'] == bucket_interval_period
 
     with pytest.raises(ReactorException):
-        conf['bucket_interval'] = {'month': 1}
-        rule = BaseAggregationRuleType(conf)
+        conf['bucket_interval'] = datetime.timedelta(milliseconds=1)
+        BaseAggregationRuleType(conf)
 
 
 def test_base_aggregation_constructor_buffer_time():
-    conf = {'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+    conf = {'bucket_interval': datetime.timedelta(seconds=10),
             'buffer_time': datetime.timedelta(minutes=1),
-            'bucket_interval': {'seconds': 10},
             'timestamp_field': '@timestamp'}
 
     # `buffer_time` evenly divisible by bucket period
     with pytest.raises(ReactorException):
-        conf['bucket_interval_timedelta'] = datetime.timedelta(seconds=13)
-        rule = BaseAggregationRuleType(conf)
+        conf['bucket_interval'] = datetime.timedelta(seconds=13)
+        BaseAggregationRuleType(conf)
 
 
 def test_base_aggregation_constructor_run_every():
-    conf = {'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+    conf = {'bucket_interval': datetime.timedelta(seconds=10),
             'buffer_time': datetime.timedelta(minutes=1),
-            'bucket_interval': {'seconds': 10},
             'timestamp_field': '@timestamp',
             'use_run_every_query_size': True,
             'run_every': datetime.timedelta(minutes=2)}
 
     # `run_every` evenly divisible by `bucket_interval`
-    rule = BaseAggregationRuleType(conf)
+    BaseAggregationRuleType(conf)
 
     with pytest.raises(ReactorException):
-        conf['bucket_interval_timedelta'] = datetime.timedelta(seconds=13)
-        rule = BaseAggregationRuleType(conf)
+        conf['bucket_interval'] = datetime.timedelta(seconds=13)
+        BaseAggregationRuleType(conf)
 
 
 def test_base_aggregation_payload_not_wrapped():
     with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=None) as mock_check_matches:
-        conf = {'bucket_interval': {'seconds': 10},
-                'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+        conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
@@ -1374,8 +1369,7 @@ def test_base_aggregation_payload_not_wrapped():
 
 def test_base_aggregation_payload_wrapped_by_date_histogram():
     with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=None) as mock_check_matches:
-        conf = {'bucket_interval': {'seconds': 10},
-                'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+        conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
@@ -1391,8 +1385,7 @@ def test_base_aggregation_payload_wrapped_by_date_histogram():
 
 def test_base_aggregation_payload_wrapped_by_terms():
     with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=None) as mock_check_matches:
-        conf = {'bucket_interval': {'seconds': 10},
-                'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+        conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
@@ -1407,8 +1400,7 @@ def test_base_aggregation_payload_wrapped_by_terms():
 
 def test_base_aggregation_payload_wrapped_by_terms_and_date_histogram():
     with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=None) as mock_check_matches:
-        conf = {'bucket_interval': {'seconds': 10},
-                'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+        conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
@@ -1606,4 +1598,3 @@ def test_percentage_match_with_qk():
     assert '76.1589403974' in rule.get_match_str(*rule.matches[0])
     conf['percentage_format_string'] = '%.2f'
     assert '76.16' in rule.get_match_str(*rule.matches[0])
-
