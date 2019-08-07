@@ -4,11 +4,15 @@ definitions: {}
 
 title: New Term
 type: object
-required: []
+
+oneOf:
+- required: [fields]
+- required: [query_key]
 
 properties:
   type: {enum: [new_term, NewTermRuleType]}
   fields: {$ref: "common.yaml#/definitions/arrayOfStringsOrOtherArrays"}
+  query_key: {$ref: "common.yaml#/definitions/arrayOfStrings"}
   terms_window_size: {$ref: "common.yaml#/definitions/timeframe"}
   alert_on_missing_field: {type: boolean}
   use_terms_query: {type: boolean}

@@ -5,6 +5,9 @@ definitions: {}
 title: Cardinality
 type: object
 required: [cardinality_field, timeframe]
+oneOf:
+- required: [max_cardinality]
+- required: [min_cardinality]
 
 properties:
   type: {enum: [cardinality, CardinalityRuleType]}

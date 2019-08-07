@@ -65,7 +65,8 @@ properties:
   priority: {type: integer}
 
   filter :
-    type: [array, object]
+    type: array
+    default: []
     items: {$ref: "common.yaml#/definitions/filter"}
     additionalProperties: false
     properties:
