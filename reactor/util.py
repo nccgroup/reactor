@@ -69,7 +69,9 @@ class ElasticSearchClient(elasticsearch.Elasticsearch):
 def semantic_at_least(version: tuple, major: int, minor: int = 0, patch: int = 0) -> bool:
     """ Check whether a semantic version is at least the specified version. """
 
-    return int(version[0]) >= major and int(version[1]) >= minor and int(version[2]) >= patch
+    return int(version[0]) > major or \
+        (int(version[0]) == major and int(version[1]) > minor) or \
+        (int(version[0]) == major and int(version[1]) == minor and int(version[2]) >= patch)
 
 
 def parse_duration(value: str) -> datetime.timedelta:
