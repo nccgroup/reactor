@@ -83,7 +83,7 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
         es_client.indices.put_template(name=conf['index'], body={'index_patterns': [conf['index'] + '_alert_*'],
                                                                  'aliases': {conf['alert_alias']: {}},
                                                                  'settings': es_index_settings,
-                                                                 'mappings': {'_doc': es_index_mappings['alert']}})
+                                                                 'mappings': es_index_mappings['alert']})
     elif es_client.es_version_at_least(6):
         reactor_logger.info('Applying mappings for ElasticSearch v6.x')
         es_client.indices.put_mapping(index=conf['index'] + '_alert', doc_type='_doc',

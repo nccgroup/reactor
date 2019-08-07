@@ -360,10 +360,10 @@ class Rule(object):
             else:
                 query['fields'] = self.conf('include')
             extra_args = {}
-        elif self.es_client.es_version_at_least(5):
-            extra_args = {'_source_include': self.conf('include')}
-        else:
+        elif self.es_client.es_version_at_least(6, 6):
             extra_args = {'_source_includes': self.conf('include')}
+        else:
+            extra_args = {'_source_include': self.conf('include')}
 
         # Only scroll if max_hits is not set or max_query_size is smaller
         scroll_keepalive = self.conf('scroll_keepalive') if self.conf('max_query_size') < self.max_hits else None
