@@ -204,7 +204,7 @@ class BlacklistRuleType(CompareRuleType):
         # Add the blacklist to the filter
         self.conf.setdefault('original_filter', self.conf['filter'])
         self.conf['filter'] = self.conf['original_filter']
-        terms_query = {'terms': {self.conf['compare_key']: self.conf['blacklist']}}
+        terms_query = {'terms': {self.conf['compare_key']: list(self.conf['blacklist'])}}
         if es_client.es_version_at_least(6):
             self.conf['filter'].append(terms_query)
         else:
@@ -237,7 +237,7 @@ class WhitelistRuleType(CompareRuleType):
         # Add the whitelist to the filter
         self.conf.setdefault('original_filter', self.conf['filter'])
         self.conf['filter'] = self.conf['original_filter']
-        terms_query = {'bool': {'must_not': {'terms': {self.conf['compare_key']: self.conf['whitelist']}}}}
+        terms_query = {'bool': {'must_not': {'terms': {self.conf['compare_key']: list(self.conf['whitelist'])}}}}
         if es_client.es_version_at_least(6):
             self.conf['filter'].append(terms_query)
         else:
@@ -607,7 +607,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
     def get_match_str(self, extra: dict, match: dict) -> str:
         spike_count = extra['spike_count']
         ref_count = extra['reference_count']
-        ts_str = pretty_ts(match[self.ts_field], self.conf['user_local_time'])
+        ts_str = pretty_ts(match[self.ts_field], self.conf['use_local_time'])
         timeframe = self.conf['timeframe']
         if self.field_value is None:
             message = 'An abnormal number (%d) of events occurred around %s.\n' % (spike_count, ts_str)
@@ -663,11 +663,11 @@ class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
         self.seen_values = {}
         # Allow the use of query_key or fields
         if 'fields' not in self.conf and 'query_key' not in self.conf:
-            raise ConfigException('NewTermsRuleType fields or query_key must be specified')
+            raise ConfigException('NewTermRuleType fields or query_key must be specified')
         self.fields = self.conf.get('query_key', self.conf.get('fields'))
 
         if not self.fields:
-            raise ConfigException('NewTermsRuleType requires fields or query_key to not be empty')
+            raise ConfigException('NewTermRuleType requires fields or query_key to not be empty')
         if type(self.fields) != list:
             self.fields = [self.fields]
         if self.conf.get('use_terms_query') and (len(self.fields) != 1 or type(self.fields[0]) == list):
@@ -1005,24 +1005,25 @@ class BaseAggregationRuleType(RuleType, AcceptsAggregationDataMixin):
         super(BaseAggregationRuleType, self).__init__(conf)
         bucket_interval = self.conf.get('bucket_interval')
         if bucket_interval:
-            if 'seconds' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['seconds']) + 's'
-            elif 'minutes' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['minutes']) + 'm'
-            elif 'hours' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['hours']) + 'h'
-            elif 'days' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['days']) + 'd'
-            elif 'weeks' in bucket_interval:
-                self.conf['bucket_interval_period'] = str(bucket_interval['weeks']) + 'w'
+            seconds = total_seconds(bucket_interval)
+            if seconds % (60 * 60 * 24 * 7) == 0:
+                self.conf['bucket_interval_period'] = str(int(seconds) // (60 * 60 * 24 * 7)) + 'w'
+            elif seconds % (60 * 60 * 24) == 0:
+                self.conf['bucket_interval_period'] = str(int(seconds) // (60 * 60 * 24)) + 'd'
+            elif seconds % (60 * 60) == 0:
+                self.conf['bucket_interval_period'] = str(int(seconds) // (60 * 60)) + 'h'
+            elif seconds % 60 == 0:
+                self.conf['bucket_interval_period'] = str(int(seconds) // 60) + 'm'
+            elif seconds % 1 == 0:
+                self.conf['bucket_interval_period'] = str(int(seconds)) + 's'
             else:
                 raise ConfigException('Unsupported window size')
 
             if self.conf.get('use_run_every_query_size'):
-                if total_seconds(self.conf['run_every']) % total_seconds(self.conf['bucket_interval_timedelta']) != 0:
+                if total_seconds(self.conf['run_every']) % total_seconds(self.conf['bucket_interval']) != 0:
                     raise ConfigException('run_every must be evenly divisible by bucket_interval if specified')
             else:
-                if total_seconds(self.conf['buffer_time']) % total_seconds(self.conf['bucket_interval_timedelta']) != 0:
+                if total_seconds(self.conf['buffer_time']) % total_seconds(self.conf['bucket_interval']) != 0:
                     raise ConfigException('buffer_time must be evenly divisible by bucket_interval if specified')
 
     def generate_aggregation_query(self):
@@ -1075,7 +1076,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
         return 'Threshold violation, %s:%s %s (min: %s, max: %s)\n\n' % (
             self.conf['metric_agg_type'],
             self.conf['metric_agg_key'],
-            extra[self.metric_key],
+            match[self.metric_key],
             self.conf.get('min_threshold'),
             self.conf.get('max_threshold'),
         )
