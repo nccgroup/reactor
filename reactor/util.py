@@ -494,8 +494,7 @@ def elasticsearch_client(conf: dict) -> ElasticSearchClient:
                                      username=es_conn_conf['es_username'],
                                      password=es_conn_conf['es_password'])
 
-    return ElasticSearchClient(host=es_conn_conf['es_host'],
-                               port=es_conn_conf['es_port'],
+    return ElasticSearchClient(hosts=[{"host": es_conn_conf['es_host'], "port": es_conn_conf['es_port']}],
                                url_prefix=es_conn_conf['es_url_prefix'],
                                use_ssl=es_conn_conf['use_ssl'],
                                verify_certs=es_conn_conf['verify_certs'],
