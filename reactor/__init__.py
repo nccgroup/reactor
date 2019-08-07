@@ -19,4 +19,4 @@ from .ruletype import (
     CardinalityRuleType,
     BaseAggregationRuleType, MetricAggregationRuleType, PercentageMatchRuleType
 )
-from .util import ElasticSearchClient
+from .util import ElasticSearchClient, elasticsearch_client
