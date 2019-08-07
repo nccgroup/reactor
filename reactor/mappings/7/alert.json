@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "rule_uuid": {
+      "type": "keyword"
+    },
+    "rule_name": {
+      "type": "keyword"
+    },
+    "@timestamp": {
+      "type": "date",
+      "format": "dateOptionalTime"
+    },
+    "alert_time": {
+      "type": "date",
+      "format": "dateOptionalTime"
+    },
+    "match_time": {
+      "type": "date",
+      "format": "dateOptionalTime"
+    },
+    "modify_time": {
+      "type": "date",
+      "format": "dateOptionalTime"
+    },
+    "match_body": {
+      "type": "object",
+      "enabled": "false"
+    },
+    "match_data": {
+      "type": "object",
+      "enabled": "false"
+    },
+    "aggregate_id": {
+      "type": "keyword"
+    }
+  }
+}
