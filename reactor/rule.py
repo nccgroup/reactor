@@ -8,7 +8,7 @@ from reactor.exceptions import ReactorException, QueryException
 from reactor.util import (
     generate_id,
     dots_get, dots_set,
-    elasticsearch_client,
+    elasticsearch_client, ElasticSearchClient,
     reactor_logger,
     dt_now, pretty_ts,
     ts_to_dt, dt_to_ts, unix_to_dt, unixms_to_dt, dt_to_unix, dt_to_unixms, ts_to_dt_with_format, dt_to_ts_with_format,
@@ -93,7 +93,7 @@ class Rule(object):
             raise ValueError('max_hits must either be None or between 1 and 10000 inclusive')
 
     @property
-    def es_client(self):
+    def es_client(self) -> ElasticSearchClient:
         if self._es_client is None:
             self.es_client = elasticsearch_client(self.conf('elasticsearch'))
         return self._es_client
@@ -312,7 +312,7 @@ class Rule(object):
         # If aggregation query adjust bucket offset
         if self.conf('aggregation_query_element'):
             if self.conf('bucket_interval'):
-                es_interval_delta = self.conf('bucket_interval_timedelta')
+                es_interval_delta = self.conf('bucket_interval')
                 unix_start_time = dt_to_unix(start_time)
                 es_interval_delta_in_sec = total_seconds(es_interval_delta)
                 offset = int(unix_start_time % es_interval_delta_in_sec)
@@ -527,12 +527,8 @@ class Rule(object):
         query = self.get_aggregation_query(base_query, query_key, term_size, self.conf('timestamp_field'))
 
         try:
-            if self.es_client.es_version_at_least(6):
-                res = self.es_client.deprecated_search(index=index, doc_type=self.conf('doc_type'),
-                                                       body=query, search_type='count', ignore_unavailable=True)
-            else:
-                res = self.es_client.deprecated_search(index=index, doc_type=self.conf('doc_type'),
-                                                       body=query, size=0, ignore_unavailable=True)
+            res = self.es_client.search(index=index, doc_type=self.conf('doc_type'),
+                                        body=query, size=0, ignore_unavailable=True)
 
         except elasticsearch.ElasticsearchException as e:
             # ElasticSearch sometimes gives us GIGANTIC error messages
@@ -543,10 +539,7 @@ class Rule(object):
 
         if 'aggregations' not in res:
             return {}
-        if self.es_client.es_version_at_least(6):
-            payload = res['aggregations']['filtered']
-        else:
-            payload = res['aggregations']
+        payload = res['aggregations']
 
         if self.es_client.es_version_at_least(7):
             self.total_hits += res['hits']['total']['value']
