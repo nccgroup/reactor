@@ -1,0 +1,26 @@
+---
+is_enabled: true
+uuid: "change"
+name: "Change rule type"
+description: A "change" rule type.
+index: reactor_logs
+use_local_time: false
+type: change
+compare_key: fruit
+ignore_null: true
+query_key: colour
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+filter:
+- bool:
+    should:
+    - term:
+        colour: red
+    - term:
+        colour: yellow
+    - term:
+        colour: green

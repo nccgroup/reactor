@@ -1,0 +1,23 @@
+---
+is_enabled: true
+uuid: "metric_aggregation"
+name: "Metric Aggregation rule type"
+description: A "metric_aggregation" rule type.
+index: reactor_logs
+use_local_time: false
+type: metric_aggregation
+metric_agg_type: avg
+metric_agg_key: count
+max_threshold: 4
+use_run_every_query_size: true
+run_every:
+  hours: 1
+bucket_interval:
+  minutes: 10
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+...

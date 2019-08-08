@@ -1,0 +1,33 @@
+---
+is_enabled: true
+uuid: "blacklist"
+name: "Blacklist rule type"
+description: A "blacklist" rule type.
+index: reactor_logs
+use_local_time: false
+type: blacklist
+compare_key: fruit
+blacklist:
+  - peach
+  - blackberry
+  - blueberry
+  - cranberry
+  - elderberry
+  - gooseberry
+  - mulberry
+  - raspberry
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+filter:
+- bool:
+    should:
+    - term:
+        colour: red
+    - term:
+        colour: yellow
+    - term:
+        colour: green

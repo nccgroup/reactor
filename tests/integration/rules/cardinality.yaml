@@ -1,0 +1,25 @@
+---
+is_enabled: true
+uuid: "cardinality"
+name: "Cardinality rule type"
+description: A "cardinality" rule type.
+index: reactor_logs
+use_local_time: false
+type: cardinality
+cardinality_field: fruit
+max_cardinality: 5
+timeframe:
+  minutes: 1
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+filter:
+- bool:
+    should:
+    - term:
+        colour: yellow
+    - term:
+        colour: green

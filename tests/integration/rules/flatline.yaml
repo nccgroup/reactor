@@ -1,0 +1,24 @@
+---
+is_enabled: true
+uuid: "flatline"
+name: "Flatline rule type"
+description: A "flatline" rule type.
+index: reactor_logs
+use_local_time: false
+type: flatline
+threshold: 5
+timeframe:
+  seconds: 5
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+filter:
+- bool:
+    should:
+    - term:
+        colour: yellow
+    - term:
+        colour: green

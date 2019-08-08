@@ -1,0 +1,40 @@
+index: reactor
+alert_alias: reactor_alerts
+
+# ElasticSearch cluster to connect
+elasticsearch: &elasticsearch
+  host: ${ES_HOST:elasticsearch}
+  port: ${ES_PORT:9200}
+
+  # (optional) basic-auth username and password
+  username: ${ES_USER:elastic}
+  password: ${ES_PASSWORD:changeme}
+
+  # (optional) Connect with TLS to ElasticSearch
+  ssl:
+    enabled: false
+    verify_certs: false
+#    ca_certs: "certs/chain-ca.pem"
+#    client_cert: "certs/elastalert.crt.pem"
+#    client_key: "certs/elastalert.key.pem"
+
+loader:
+  config:
+    rules_folder: /home/reactor/tests/integration/rules
+
+# Global settings to be applied to every run
+rule:
+  elasticsearch: *elasticsearch
+  run_every:
+    seconds: 30
+  buffer_time:
+    hours: 1
+  max_query_size: 10000
+  query_delay:
+    minutes: 6
+    seconds: 15
+
+#mappings:
+#  ruletypes:
+#    frequency: my_modules.ruletype.ReactLiveFrequency
+

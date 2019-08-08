@@ -1,25 +1,28 @@
-import os
+import setuptools
 
-from setuptools import find_packages
-from setuptools import setup
+with open('README.md', 'r') as fh:
+    long_description = fh.read()
 
-base_dir = os.path.dirname(__file__)
-
-setup(
-    name='Reactor',
+setuptools.setup(
+    name='reactor',
     version='0.1.1',
-    description='',
     author='Peter Scopes',
     author_email='peter.scopes@nccgroup.com',
+    description='Runs custom filters on Elasticsearch and alerts on matches',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    url='https://nccgroup.com/',
     setup_requires='setuptools',
+    packages=setuptools.find_packages(),
     license='Copyright 2019 NCC Group',
     classifiers=[
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.6',
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: OS Independent',
     ],
-    packages=find_packages(),
-    package_data={'reactor': ['schemas/config.yaml', 'schemas/ruletype.yaml']},
+    entry_points={
+        'console_scripts': ['reactor=reactor.__main__']},
+    package_data={'reactor': ['schemas/*.yaml', 'mappings/**/*.json']},
     install_requires=[
         'apscheduler>=3.6.0',
         'croniter>=0.3.30',

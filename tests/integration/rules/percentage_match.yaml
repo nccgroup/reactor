@@ -1,0 +1,19 @@
+---
+is_enabled: true
+uuid: "percentage_match"
+name: "Percentage Match rule type"
+description: A "percentage_match" rule type.
+index: reactor_logs
+use_local_time: false
+type: percentage_match
+max_percentage: .6
+match_bucket_filter:
+  terms:
+    colour: [red]
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+...

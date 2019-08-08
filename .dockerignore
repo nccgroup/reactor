@@ -5,10 +5,10 @@
 /dist/
 /env/
 /rules/
+/tests/
 /venv/
 /config.yaml
 /*.jsonl
-/*.ndjson
 
 # Anywhere ignores
 __pycache__/
@@ -20,4 +20,12 @@ __pycache__/
 *.swp
 *~
 
+# ignore certain hidden folders folders
+.git
+.cache
+.DS_Store
+.pytest_cache
+
+# ignore certain hidden files
 .env
+.gitignore

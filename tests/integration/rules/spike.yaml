@@ -1,0 +1,21 @@
+---
+is_enabled: true
+uuid: "spike"
+name: "Spike rule type"
+description: A "spike" rule type.
+index: reactor_logs
+use_local_time: false
+type: spike
+spike_height: 2
+spike_type: both
+timeframe:
+  minutes: 10
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+filter:
+- term:
+    colour: red

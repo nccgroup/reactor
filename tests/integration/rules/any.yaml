@@ -1,0 +1,17 @@
+---
+is_enabled: true
+uuid: "any"
+name: "Any rule type"
+description: An "any" rule type.
+index: reactor_logs
+use_local_time: false
+type: any
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+filter:
+- term:
+    colour: red

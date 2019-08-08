@@ -1,0 +1,16 @@
+FROM python:3.6
+
+RUN apt-get update && apt-get upgrade -y
+
+WORKDIR /home/reactor
+
+ADD requirements*.txt ./
+RUN pip install -r requirements-dev.txt && pip install -r requirements.txt
+
+ADD setup.py LICENSE README.md ./
+ADD reactor ./reactor/
+
+# Install Reactor
+RUN python setup.py sdist bdist_wheel && \
+    python setup.py install && \
+    pip install -e .
