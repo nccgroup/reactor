@@ -98,9 +98,8 @@ class Client(object):
                 res = self.es_client.search(index=index, size=1, body=query,
                                             _source_include=['end_time', 'rule_id'])
             else:
-                # TODO: decide whether to support older versions of ES (probably not)
-                res = self.es_client.deprecated_search(index=index, doc_type=doc_type,
-                                                       size=1, body=query, _source_include=['end_time', 'rule_id'])
+                res = self.es_client.search(index=index, doc_type=doc_type,
+                                            size=1, body=query, _source_include=['end_time', 'rule_id'])
 
             if res['hits']['hits']:
                 end_time = ts_to_dt(res['hits']['hits'][0]['_source']['end_time'])
@@ -584,12 +583,20 @@ class Client(object):
             list(map(self.silence_cache[rule.uuid].pop, stale_silences))
 
         # Clear up the silence index in the writeback elasticsearch
-        res = self.es_client.search(index=self.get_writeback_index('silence'), doc_type='_doc', body={
-            'query': {'bool': {'must': [
-                {'term': {'rule_uuid': rule.uuid}},
-                {'range': {'until': {'lt': dt_to_ts(now - buffer_time)}}}
-            ]}}
-        }, _source=False, size=1000)
+        if self.es_client.es_version_at_least(6):
+            res = self.es_client.search(index=self.get_writeback_index('silence'), body={
+                'query': {'bool': {'must': [
+                    {'term': {'rule_uuid': rule.uuid}},
+                    {'range': {'until': {'lt': dt_to_ts(now - buffer_time)}}}
+                ]}}
+            }, _source=False, size=1000)
+        else:
+            res = self.es_client.search(index=self.get_writeback_index('silence'), doc_type='_doc', body={
+                'query': {'bool': {'must': [
+                    {'term': {'rule_uuid': rule.uuid}},
+                    {'range': {'until': {'lt': dt_to_ts(now - buffer_time)}}}
+                ]}}
+            }, _source=False, size=1000)
         elasticsearch.helpers.bulk(self.es_client, [{
             '_op_type': 'delete',
             '_index': self.get_writeback_index('silence'),
@@ -910,7 +917,6 @@ class Client(object):
                 'until': until}
 
         self.silence_cache[rule.uuid][silence_cache_key] = (until, exponent, alert_uuid)
-        # TODO: Inform the rule type of the silence. `Client.get_silenced` as well.
         return self.writeback('silence', body)
 
     def is_silenced(self, rule: Rule, silence_key=None, timestamp=None):
@@ -973,7 +979,6 @@ class Client(object):
         self.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
 
         if rule.conf('disable_rule_on_error'):
-            # TODO: implement rule disabling
             self.loader.disable(rule.uuid)
             self.scheduler.remove_job(job_id=rule.hash)
             reactor_logger.info('Rule %s disabled', rule.name)
@@ -1001,8 +1006,7 @@ class Client(object):
             if hits_terms is None:
                 top_events_count = {}
             else:
-                # TODO: convert this from py2 to py3
-                buckets = hits_terms.values()[0]
+                buckets = list(hits_terms.values())[0]
                 # get_hits_terms adds to num_hits, bu we don't want to count these
                 rule.num_hits -= len(buckets)
                 terms = {}

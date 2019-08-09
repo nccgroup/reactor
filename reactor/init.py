@@ -57,15 +57,19 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
             index_created = es_index.exists(index_name)
         if not index_created:
             raise ReactorException('Failed to create index: %s' % index_name)
-    for item in es_client.cat.aliases(format='json'):
-        if item['alias'] != conf['alert_alias']:
-            continue
-        reactor_logger.info('Deleting index ' + item['index'] + '.')
-        try:
-            es_index.delete(item['index'])
-        except elasticsearch.NotFoundError:
-            # Why does this ever occur?? It shouldn't. But it does.
-            pass
+    try:
+        for item in es_client.cat.aliases(format='json'):
+            if item['alias'] != conf['alert_alias']:
+                continue
+            reactor_logger.info('Deleting index ' + item['index'] + '.')
+            try:
+                es_index.delete(item['index'])
+            except elasticsearch.NotFoundError:
+                # Why does this ever occur?? It shouldn't. But it does.
+                pass
+    except elasticsearch.NotFoundError:
+        # ElasticSearch v5.x.x returns a 404 if there are no indices
+        pass
 
     if es_client.es_version_at_least(7):
         # TODO: remove doc_type completely when elasticsearch client allows doc_type=None
@@ -103,10 +107,10 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
         reactor_logger.info('Applying mappings for ElasticSearch v5.x')
         es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_alert',
                                       body=es_index_mappings['alert'])
-        es_client.indices.put_alias(index=conf['index'] + '_alert', name=conf['alert_alias'])
+        es_client.indices.put_alias(index=conf['index'], name=conf['alert_alias'])
         es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_status',
                                       body=es_index_mappings['status'])
-        es_client.indices.put_mapping(index=conf['index'], doc_type='reactor',
+        es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_silence',
                                       body=es_index_mappings['silence'])
         es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_error',
                                       body=es_index_mappings['error'])

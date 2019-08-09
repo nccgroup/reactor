@@ -527,8 +527,12 @@ class Rule(object):
         query = self.get_aggregation_query(base_query, query_key, term_size, self.conf('timestamp_field'))
 
         try:
-            res = self.es_client.search(index=index, doc_type=self.conf('doc_type'),
-                                        body=query, size=0, ignore_unavailable=True)
+            if self.es_client.es_version_at_least(6):
+                res = self.es_client.search(index=index,
+                                            body=query, size=0, ignore_unavailable=True)
+            else:
+                res = self.es_client.search(index=index, doc_type=self.conf('doc_type'),
+                                            body=query, size=0, ignore_unavailable=True)
 
         except elasticsearch.ElasticsearchException as e:
             # ElasticSearch sometimes gives us GIGANTIC error messages
