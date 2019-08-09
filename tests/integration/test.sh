@@ -3,8 +3,8 @@ set -e
 
 
 # Initialise the reactor indices
-echo " [x] Initialising the reactor indices (waiting up to 1 minute for ElasticSearch)"
-python -m reactor init --config config-test.yaml --patience minutes=1 --recreate -f
+echo " [x] Initialising the reactor indices (waiting up to 5 minute for ElasticSearch)"
+python -m reactor init --config config-test.yaml --patience minutes=5 --recreate -f
 
 
 # Populate ElasticSearch with some interesting logs
