@@ -1,5 +1,9 @@
 FROM python:3.6
 
+ENV ES_HOST elasticsearch
+ENV ES_USER elastic
+ENV ES_PASSWORD changeme
+
 RUN apt-get update && apt-get upgrade -y
 
 WORKDIR /home/reactor
