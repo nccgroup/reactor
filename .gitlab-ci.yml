@@ -1,23 +1,30 @@
 stages:
+  - build
   - test
+
+b:reactor:
+  stage: build
+  services:
+    - name: docker:dind
+      command: ["--insecure-registry", "git-man-dev.nccgroup.local:4461"]
+  tags:
+    - docker-build
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker build --pull -f Dockerfile-test -t ${CI_REGISTRY_IMAGE}/reactor:test .
+    - docker push ${CI_REGISTRY_IMAGE}/reactor:test
+
 
 t:unit:
   stage: test
-  image: python:latest
-  before_script:
-    - pip install -r requirements-dev.txt -r requirements.txt
-    - python setup.py install
-    - python install -e .
+  image: ${CI_REGISTRY_IMAGE}/reactor:test
   script:
     - py.test
 
 t:integration:5.6.16:
   stage: test
-  image: python:latest
-  before_script:
-    - pip install -r requirements-dev.txt -r requirements.txt
-    - python setup.py install
-    - python install -e .
+  image: ${CI_REGISTRY_IMAGE}/reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
@@ -29,11 +36,7 @@ t:integration:5.6.16:
 
 t:integration:6.3.0:
   stage: test
-  image: python:latest
-  before_script:
-    - pip install -r requirements-dev.txt -r requirements.txt
-    - python setup.py install
-    - python install -e .
+  image: ${CI_REGISTRY_IMAGE}/reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
@@ -45,11 +48,7 @@ t:integration:6.3.0:
 
 t:integration:6.8.2:
   stage: test
-  image: python:latest
-  before_script:
-    - pip install -r requirements-dev.txt -r requirements.txt
-    - python setup.py install
-    - python install -e .
+  image: ${CI_REGISTRY_IMAGE}/reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
@@ -61,11 +60,7 @@ t:integration:6.8.2:
 
 t:integration:7.3.0:
   stage: test
-  image: python:latest
-  before_script:
-    - pip install -r requirements-dev.txt -r requirements.txt
-    - python setup.py install
-    - python install -e .
+  image: ${CI_REGISTRY_IMAGE}/reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
