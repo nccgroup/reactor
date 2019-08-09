@@ -9,7 +9,7 @@ python -m reactor init --config config-test.yaml --patience minutes=1 --recreate
 
 # Populate ElasticSearch with some interesting logs
 echo " [x] Setting up test data"
-python /home/reactor/tests/integration/test.py
+python ./tests/integration/test.py
 
 
 # Execute reactor for a limited period of time
