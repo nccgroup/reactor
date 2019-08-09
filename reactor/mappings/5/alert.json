@@ -2,12 +2,10 @@
   "reactor_alert": {
     "properties": {
       "rule_uuid": {
-        "index": "not_analyzed",
-        "type": "string"
+        "type": "keyword"
       },
       "rule_name": {
-        "index": "not_analyzed",
-        "type": "string"
+        "type": "keyword"
       },
       "@timestamp": {
         "type": "date",
@@ -34,8 +32,7 @@
         "enabled": "false"
       },
       "aggregate_id": {
-        "index": "not_analyzed",
-        "type": "string"
+        "type": "keyword"
       }
     }
   }
