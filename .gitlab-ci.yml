@@ -34,6 +34,8 @@ t:integration:5.6.16:
   image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
     - b:reactor:test
+  tags:
+    - docker-code
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:5.6.16
       alias: elasticsearch
@@ -48,6 +50,8 @@ t:integration:6.3.0:
   image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
     - b:reactor:test
+  tags:
+    - docker-code
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
@@ -62,6 +66,8 @@ t:integration:6.8.2:
   image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
     - b:reactor:test
+  tags:
+    - docker-code
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.8.2
       alias: elasticsearch
@@ -76,6 +82,8 @@ t:integration:7.3.0:
   image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
     - b:reactor:test
+  tags:
+    - docker-code
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:7.3.0
       alias: elasticsearch
