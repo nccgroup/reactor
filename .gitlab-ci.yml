@@ -2,11 +2,16 @@ stages:
   - build
   - test
 
-b:reactor:
+b:reactor:test:
   stage: build
   services:
     - name: docker:dind
       command: ["--insecure-registry", "git-man-dev.nccgroup.local:4461"]
+  only:
+    - merge_requests
+    - qat
+    - uat
+    - master
   tags:
     - docker-build
   before_script:
@@ -19,12 +24,16 @@ b:reactor:
 t:unit:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/reactor:test
+  dependencies:
+    - b:reactor:test
   script:
     - py.test
 
 t:integration:5.6.16:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/reactor:test
+  dependencies:
+    - b:reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:5.6.16
       alias: elasticsearch
@@ -37,6 +46,8 @@ t:integration:5.6.16:
 t:integration:6.3.0:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/reactor:test
+  dependencies:
+    - b:reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
@@ -49,6 +60,8 @@ t:integration:6.3.0:
 t:integration:6.8.2:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/reactor:test
+  dependencies:
+    - b:reactor:test
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.8.2
       alias: elasticsearch
@@ -61,8 +74,10 @@ t:integration:6.8.2:
 t:integration:7.3.0:
   stage: test
   image: ${CI_REGISTRY_IMAGE}/reactor:test
+  dependencies:
+    - b:reactor:test
   services:
-    - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
+    - name: docker.elastic.co/elasticsearch/elasticsearch:7.3.0
       alias: elasticsearch
       command: ["-Elogger.level=error", "-Enode.name=elasticsearch", "-Ediscovery.seed_hosts=elasticsearch", "-Ecluster.initial_master_nodes=elasticsearch"]
   variables:
