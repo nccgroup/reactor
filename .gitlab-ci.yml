@@ -37,7 +37,6 @@ t:integration:5.6.16:
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:5.6.16
       alias: elasticsearch
-#      command: ["bin/elasticsearch", "-Elogger.level=error"]
   variables:
     ES_JAVA_OPTS: "-Xms512m -Xmx512m"
   script:
@@ -51,7 +50,6 @@ t:integration:6.3.0:
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
-#      command: ["bin/elasticsearch", "-Elogger.level=error"]
   variables:
     ES_JAVA_OPTS: "-Xms512m -Xmx512m"
   script:
@@ -65,7 +63,6 @@ t:integration:6.8.2:
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.8.2
       alias: elasticsearch
-#      command: ["bin/elasticsearch", "-Elogger.level=error"]
   variables:
     ES_JAVA_OPTS: "-Xms512m -Xmx512m"
   script:
@@ -79,7 +76,6 @@ t:integration:7.3.0:
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:7.3.0
       alias: elasticsearch
-#      command: ["bin/elasticsearch", "-Elogger.level=error", "-Enode.name=elasticsearch", "-Ediscovery.seed_hosts=elasticsearch", "-Ecluster.initial_master_nodes=elasticsearch"]
       command: ["bin/elasticsearch", "-Enode.name=elasticsearch", "-Ediscovery.seed_hosts=elasticsearch", "-Ecluster.initial_master_nodes=elasticsearch"]
   variables:
     ES_JAVA_OPTS: "-Xms512m -Xmx512m"
