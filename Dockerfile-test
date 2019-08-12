@@ -8,11 +8,12 @@ RUN apt-get update && apt-get upgrade -y
 
 WORKDIR /home/reactor
 
-ADD requirements*.txt ./
+COPY requirements*.txt ./
 RUN pip install -r requirements-dev.txt -r requirements.txt
 
-ADD setup.py LICENSE README.md ./
-ADD reactor ./reactor/
+COPY setup.py LICENSE README.md ./
+COPY reactor ./reactor
+COPY tests ./tests
 
 # Install Reactor
 RUN python setup.py install && \
