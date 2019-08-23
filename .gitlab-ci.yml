@@ -2,38 +2,80 @@ stages:
   - build
   - test
 
-b:reactor:test:
-  stage: build
-  services:
-    - name: docker:dind
-      command: ["--insecure-registry", "git-man-dev.nccgroup.local:4461"]
+image: python:3.6
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  key: "${CI_PROJECT_ID}_${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .cache/pip
+    - venv/
+  policy: pull
+
+# Test template
+.cache_template:
+  tags:
+    - code
   only:
+    - branches
     - merge_requests
-    - qat
-    - uat
-    - master
+  except:
+    - /^feature\/.*$/
+  before_script:
+    - python -V
+    - pip install virtualenv
+    - virtualenv venv
+    - source venv/bin/activate
+
+# Docker template
+.docker_template:
+  image: docker:stable
+  services:
+    - name: docker:stable-dind
+      command: ["--insecure-registry=git-man-dev.nccgroup.local:4461"]
+  before_script:
+    - docker login --username $CI_REGISTRY_USER --password $CI_JOB_TOKEN $CI_REGISTRY
+  # the cached files are not required here
+  cache: {}
   tags:
     - docker-build
-  before_script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  only:
+    - dev
+    - master
+
+
+b:reactor:
+  extends: .cache_template
+  stage: build
   script:
-    - docker build --pull -f Dockerfile-test -t ${CI_REGISTRY_IMAGE}/reactor:test .
-    - docker push ${CI_REGISTRY_IMAGE}/reactor:test
+    - pip install -r requirements.txt
+    - python setup.py install
+    - pip install -e .
+  # Override the cache definition to write to it
+  cache:
+    key: "${CI_PROJECT_ID}_${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .cache/pip
+      - venv/
+    policy: pull-push
 
 
 t:unit:
+  extends: .cache_template
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
-    - b:reactor:test
+    - b:reactor
   script:
+    - pip install -r requirements-dev.txt
     - py.test
 
 t:integration:5.6.16:
+  extends: .cache_template
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
-    - b:reactor:test
+    - b:reactor
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:5.6.16
       alias: elasticsearch
@@ -43,10 +85,10 @@ t:integration:5.6.16:
     - ./tests/integration/test.sh
 
 t:integration:6.3.0:
+  extends: .cache_template
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
-    - b:reactor:test
+      - b:reactor
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.3.0
       alias: elasticsearch
@@ -56,10 +98,10 @@ t:integration:6.3.0:
     - ./tests/integration/test.sh
 
 t:integration:6.8.2:
+  extends: .cache_template
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
-    - b:reactor:test
+    - b:reactor
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:6.8.2
       alias: elasticsearch
@@ -69,10 +111,10 @@ t:integration:6.8.2:
     - ./tests/integration/test.sh
 
 t:integration:7.3.0:
+  extends: .cache_template
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/reactor:test
   dependencies:
-    - b:reactor:test
+    - b:reactor
   services:
     - name: docker.elastic.co/elasticsearch/elasticsearch:7.3.0
       alias: elasticsearch

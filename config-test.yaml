@@ -20,7 +20,7 @@ elasticsearch: &elasticsearch
 
 loader:
   config:
-    rules_folder: /home/reactor/tests/integration/rules
+    rules_folder: ./tests/integration/rules
 
 # Global settings to be applied to every run
 rule:

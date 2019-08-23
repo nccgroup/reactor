@@ -1,7 +1,8 @@
 import copy
 import datetime
 import os
-from sortedcontainers import SortedKeyList
+from typing import Generator
+
 from reactor.exceptions import ReactorException, ConfigException
 from reactor.util import (
     dt_to_ts, ts_to_dt, dt_now, pretty_ts, total_seconds,
@@ -11,6 +12,7 @@ from reactor.util import (
     ElasticSearchClient
 )
 from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
+from sortedcontainers import SortedKeyList
 
 
 def get_ts_lambda(ts_field):
@@ -82,31 +84,38 @@ class RuleType(object):
     rule_schema = None
 
     def __init__(self, conf: dict):
-        self.matches = []
+        self.num_matches = 0
         self.conf = conf
         self.occurrences = {}
         self.ts_field = self.conf.get('timestamp_field', '@timestamp')
+        self.silences = {}
+
+    def set_silence(self, key: str, until: datetime.datetime):
+        """ Mark a silence cache key as silenced until """
+        self.silences[key] = until
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
         """ Prepare the RuleType for receiving data. Should be called before running a rule. """
         pass
 
-    def add_match(self, extra: dict, event: dict):
+    def add_match(self, extra: dict, event: dict) -> (dict, dict):
         """
         :param extra: Extra data about the triggered alert
         :param event: Event that triggered the rule match
+        :return: Tuple of `extra` and a deep copy of `event`
         """
         event = copy.deepcopy(event)
         if self.ts_field in event:
             event[self.ts_field] = dt_to_ts(event[self.ts_field])
 
-        self.matches.append((extra, event))
+        self.num_matches += 1
+        return extra, event
 
     def get_match_str(self, extra: dict, match: dict) -> str:
         return ''
 
-    def garbage_collect(self, timestamp: datetime.datetime):
-        pass
+    def garbage_collect(self, timestamp: datetime.datetime) -> Generator[dict, None, None]:
+        yield from ()
 
     def merge_alert_body(self, orig_alert: dict, new_alert: dict):
         """ Merge `new_alert` into `orig_alert`. """
@@ -119,25 +128,25 @@ class RuleType(object):
 
 class AcceptsHitsDataMixin(object):
     """ A mixin class to denote that the RuleType accepts hits data. """
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         raise NotImplementedError()
 
 
 class AcceptsCountDataMixin(object):
     """ A mixin class to denote that the RuleType accepts count data. """
-    def add_count_data(self, counts):
+    def add_count_data(self, counts) -> Generator[dict, None, None]:
         raise NotImplementedError()
 
 
 class AcceptsTermsDataMixin(object):
     """ A mixin class to denote that the RuleType accepts terms data. """
-    def add_terms_data(self, counts):
+    def add_terms_data(self, counts) -> Generator[dict, None, None]:
         raise NotImplementedError()
 
 
 class AcceptsAggregationDataMixin(object):
     """ A mixin class to denote that the RuleType accepts aggregation data. """
-    def add_aggregation_data(self, payload):
+    def add_aggregation_data(self, payload) -> Generator[dict, None, None]:
         raise NotImplementedError()
 
 
@@ -146,14 +155,14 @@ class AnyRuleType(RuleType, AcceptsHitsDataMixin):
                               os.path.join(os.path.dirname(__file__), 'schemas/ruletype-any.yaml'))
 
     """ A rule that will match on any input data. """
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         qk = self.conf.get('query_key', None)
         for event in data:
             extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
                      'num_events': 1,
                      'began_at': ts_to_dt(dots_get(event, self.ts_field)),
                      'ended_at': ts_to_dt(dots_get(event, self.ts_field))}
-            self.add_match(extra, event)
+            yield self.add_match(extra, event)
 
 
 class CompareRuleType(RuleType, AcceptsHitsDataMixin):
@@ -180,10 +189,10 @@ class CompareRuleType(RuleType, AcceptsHitsDataMixin):
         """ An event is a match if this returns true """
         raise NotImplementedError()
 
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         for event in data:
             if self.compare(event):
-                self.add_match(*self.generate_match(event))
+                yield self.add_match(*self.generate_match(event))
 
     def generate_match(self, event: dict) -> (dict, dict):
         raise NotImplementedError()
@@ -337,16 +346,25 @@ class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, A
         # the 'end' parameter depends on whether this was called from the
         # middle or end of an add_data call and is used in sub classes
         if self.occurrences[key].count() >= self.conf['num_events']:
+            # Check if the occurrences are split across a silence
+            e = self.occurrences[key].data[0][0]
+            silence_cache_key = dots_get(e, self.conf.get('query_key'), '_missing') if self.conf.get('query_key') else '_silence'
+            if silence_cache_key in self.silences:
+                if ts_to_dt(self.get_ts(self.occurrences[key].data[0])) <= self.silences[silence_cache_key] < ts_to_dt(self.get_ts(self.occurrences[key].data[-1])):
+                    while self.get_ts(self.occurrences[key].data[0]) <= self.silences[silence_cache_key]:
+                        self.occurrences[key].data.pop(0)
+                    return
+
             extra = {'key': key, 'num_events': self.occurrences[key].count(),
                      'began_at': self.get_ts(self.occurrences[key].data[0]),
                      'ended_at': self.get_ts(self.occurrences[key].data[-1])}
             event = self.occurrences[key].data[-1][0]
             if self.attach_related:
                 event['related_events'] = [data[0] for data in self.occurrences[key].data[:-1]]
-            self.add_match(extra, event)
             self.occurrences.pop(key)
+            yield self.add_match(extra, event)
 
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         qk = self.conf.get('query_key', None)
         keys = set()
         for event in data:
@@ -355,13 +373,8 @@ class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, A
 
             # Store the timestamps of recent occurrences, per key
             self.occurrences.setdefault(key, EventWindow(self.conf['timeframe'], self.get_ts)).append((event, 1))
-            self.check_for_match(key, end=False)
+            yield from self.check_for_match(key, end=False)
             keys.add(key)
-            # TODO: the silence on a match is only checking the match time (the last event not the first) therefore, a
-            #  new alert might "began_at" before the end of the silence period.
-            #  To correct this `add_data`, `add_count_data`, and `add_terms_data` will need to become generator
-            #  functions that are immediately processed by the client so that silences can be set (and be used to
-            #  enforce new alerts `began_at` don't overlap with old alert silence `until`).
 
             # TODO: will potentially need to accept that any solution for now will not be able to easily handle historic
             #  data added after future alerts have been fired, or that it requires data to come in order
@@ -370,7 +383,7 @@ class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, A
         # may or may not want to check while only partial data has been added
         for key in keys:
             if key in self.occurrences:
-                self.check_for_match(key, end=True)
+                yield from self.check_for_match(key, end=True)
 
     def get_match_str(self, extra: dict, match: dict) -> str:
         lt = self.conf['use_local_time']
@@ -379,15 +392,16 @@ class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, A
         end_time = pretty_ts(match_ts, lt)
         return 'At least %d events occurred between %s and %s\n\n' % (self.conf['num_events'], start_time, end_time)
 
-    def garbage_collect(self, timestamp: datetime.datetime):
+    def garbage_collect(self, timestamp: datetime.datetime) -> Generator[dict, None, None]:
         """ Remove all occurrence data that is beyond the timeframe away. """
         stale_keys = []
         for key, window in self.occurrences.items():
             if timestamp - dots_get(window.data[-1][0], self.ts_field) > self.conf['timeframe']:
                 stale_keys.append(key)
         list(map(self.occurrences.pop, stale_keys))
+        yield from ()
 
-    def add_count_data(self, counts):
+    def add_count_data(self, counts) -> Generator[dict, None, None]:
         """ Add count data to the rule. Data should be of the form {ts: count}. """
         if len(counts) > 1:
             raise ReactorException('add_count_data can only accept one count at a time')
@@ -395,16 +409,16 @@ class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, A
 
         event = ({self.ts_field: ts}, count)
         self.occurrences.setdefault('all', EventWindow(self.conf['timeframe'], self.get_ts)).append(event)
-        self.check_for_match('all')
+        yield from self.check_for_match('all')
 
-    def add_terms_data(self, terms):
+    def add_terms_data(self, terms) -> Generator[dict, None, None]:
         for timestamp, buckets in terms.items():
             for bucket in buckets:
                 event = ({self.ts_field: timestamp,
                           self.conf['query_key']: bucket['key']}, bucket['doc_count'])
                 self.occurrences.setdefault(bucket['key'],
                                             EventWindow(self.conf['timeframe'], self.get_ts)).append(event)
-                self.check_for_match(bucket['key'])
+                yield from self.check_for_match(bucket['key'])
 
 
 class FlatlineRuleType(FrequencyRuleType):
@@ -446,7 +460,7 @@ class FlatlineRuleType(FrequencyRuleType):
                      'began_at': self.get_ts(self.occurrences[key].data[0]),
                      'ended_at': self.get_ts(self.occurrences[key].data[-1])}
             event = copy.deepcopy(self.occurrences[key].data[-1][0])
-            self.add_match(extra, event)
+            yield self.add_match(extra, event)
 
             if not self.conf['forget_keys']:
                 # After adding this match, leave the occurrences window alone since it will
@@ -471,7 +485,7 @@ class FlatlineRuleType(FrequencyRuleType):
         )
         return message
 
-    def garbage_collect(self, timestamp: datetime.datetime):
+    def garbage_collect(self, timestamp: datetime.datetime) -> Generator[dict, None, None]:
         # We add an event with a count of zero to the EventWindow for each key. This will cause the EventWindow
         # to remove events that occurred more than one timeframe ago, and call on_remove on them.
         default = ['all'] if 'query_key' not in self.conf else []
@@ -479,7 +493,7 @@ class FlatlineRuleType(FrequencyRuleType):
             event = ({self.ts_field: timestamp}, 0)
             self.occurrences.setdefault(key, EventWindow(self.conf['timeframe'], self.get_ts)).append(event)
             self.first_event.setdefault(key, timestamp)
-            self.check_for_match(key, end=True)
+            yield from self.check_for_match(key, end=True)
 
 
 class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, AcceptsTermsDataMixin):
@@ -540,7 +554,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
                     if "placeholder" not in e:
                         break
                 if e:
-                    self.add_match(*self.generate_match(e, qk))
+                    yield self.add_match(*self.generate_match(e, qk))
                     self.clear_windows(qk, e)
         else:
             if self.find_matches(self.ref_windows[qk].count(), self.cur_windows[qk].count()):
@@ -550,7 +564,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
                     if count:
                         break
                 if e:
-                    self.add_match(*self.generate_match(e, qk))
+                    yield self.add_match(*self.generate_match(e, qk))
                     self.clear_windows(qk, e)
 
     def find_matches(self, ref, cur):
@@ -568,7 +582,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
         return (spike_up and self.conf['spike_type'] in ['both', 'up']) or \
                (spike_dn and self.conf['spike_type'] in ['both', 'down'])
 
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         qk = self.conf.get('query_key', None)
         for event in data:
             # If no query_key, we use the key 'all' for all events
@@ -583,9 +597,9 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
                     except ValueError:
                         reactor_logger.warning('%s is not a number: %s', self.field_value, count)
                     else:
-                        self.handle_event(event, count, qk)
+                        yield from self.handle_event(event, count, qk)
             else:
-                self.handle_event(event, 1, key)
+                yield from self.handle_event(event, 1, key)
 
     def generate_match(self, event: dict, qk: str) -> (dict, dict):
         """ Generate a SpikeRuleType event. """
@@ -620,7 +634,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
                                                                                                              timeframe)
         return message
 
-    def garbage_collect(self, timestamp: datetime.datetime):
+    def garbage_collect(self, timestamp: datetime.datetime) -> Generator[dict, None, None]:
         # Windows are sized according to their newest event
         # This is a placeholder to accurately size windows in the absence of events
         for qk in self.cur_windows.keys():
@@ -632,23 +646,23 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
             # The placeholder may trigger an alert, in which case, qk will be expected
             if qk != 'all':
                 placeholder.update({self.conf['query_key']: qk})
-            self.handle_event(placeholder, 0, qk)
+            yield from self.handle_event(placeholder, 0, qk)
 
-    def add_count_data(self, counts):
+    def add_count_data(self, counts) -> Generator[dict, None, None]:
         """ Add count data to the rule. Data should be of the form {ts: count}. """
         if len(counts) > 1:
             raise ReactorException('SpikeRuleType.add_count_data can only accept one count at a time')
         for ts, count in counts.items():
-            self.handle_event({self.ts_field: ts}, count, 'all')
+            yield from self.handle_event({self.ts_field: ts}, count, 'all')
 
-    def add_terms_data(self, terms):
+    def add_terms_data(self, terms) -> Generator[dict, None, None]:
         for timestamp, buckets in terms.items():
             for bucket in buckets:
                 count = bucket['doc_count']
                 event = {self.ts_field: timestamp,
                          self.conf['query_key']: bucket['key']}
                 key = bucket['key']
-                self.handle_event(event, count, key)
+                yield from self.handle_event(event, count, key)
 
 
 class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
@@ -865,7 +879,7 @@ class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
                     results.add(hierarchy_tuple + (node['key'],))
         return results
 
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         for event in data:
             for field in self.fields:
                 value = ()
@@ -883,10 +897,10 @@ class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
                 else:
                     value = dots_get(event, lookup_field)
                 if not value and self.conf.get('alert_on_missing_field'):
-                    self.add_match(*self.generate_match(lookup_field, None, event=event))
+                    yield self.add_match(*self.generate_match(lookup_field, None, event=event))
                 elif value:
                     if value not in self.seen_values[lookup_field]:
-                        self.add_match(*self.generate_match(lookup_field, value, event=event))
+                        yield self.add_match(*self.generate_match(lookup_field, value, event=event))
 
     def generate_match(self, field, value, event: dict = None, timestamp=None) -> (dict, dict):
         """ Generate a match and, if there is a value, store in `self.seen_values[field]`. """
@@ -905,13 +919,13 @@ class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
             self.seen_values[field].add(value)
         return extra, event
 
-    def add_terms_data(self, terms):
+    def add_terms_data(self, terms) -> Generator[dict, None, None]:
         field = self.fields[0]
         for timestamp, buckets in terms.items():
             for bucket in buckets:
                 if bucket['doc_count']:
                     if bucket['key'] not in self.seen_values[field]:
-                        self.add_match(*self.generate_match(field, bucket['key'], timestamp=timestamp))
+                        yield self.add_match(*self.generate_match(field, bucket['key'], timestamp=timestamp))
 
 
 class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
@@ -930,7 +944,7 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
         self.first_event = {}
         self.timeframe = self.conf['timeframe']
 
-    def add_hits_data(self, data: list):
+    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
         qk = self.conf.get('query_key', None)
         for event in data:
             # If no query_key, we use the key 'all' for all events
@@ -941,7 +955,7 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
             if value is not None:
                 # Store this timestamp as most recent occurrence of the term
                 self.cardinality_cache[key][value] = dots_get(event, self.ts_field)
-                self.check_for_match(key, event)
+                yield from self.check_for_match(key, event)
 
     def check_for_match(self, key, event, garbage_collect=True):
         time_elapsed = dots_get(event, self.ts_field) - self.first_event.get(key, dots_get(event, self.ts_field))
@@ -951,8 +965,8 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
             # If there might be a match, run garbage collect first to remove outdated terms
             # Only run it if there might be a match so it doesn't impact performance
             if garbage_collect:
-                self.garbage_collect(dots_get(event, self.ts_field))
-                self.check_for_match(key, event, False)
+                yield from self.garbage_collect(dots_get(event, self.ts_field))
+                yield from self.check_for_match(key, event, False)
             else:
                 self.first_event.pop(key, None)
                 extra = {'cardinality': self.cardinality_cache[key],
@@ -960,7 +974,7 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
                          'num_events': len(self.cardinality_cache[key]),
                          'began_at': self.first_event.get(key, dots_get(event, self.ts_field)),
                          'ended_at': dots_get(event, self.ts_field)}
-                self.add_match(extra, event)
+                yield self.add_match(extra, event)
 
     def get_match_str(self, extra: dict, match: dict) -> str:
         lt = self.conf.get('use_local_time')
@@ -979,7 +993,7 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
                 began_time,
                 ended_time)
 
-    def garbage_collect(self, timestamp: datetime.datetime):
+    def garbage_collect(self, timestamp: datetime.datetime) -> Generator[dict, None, None]:
         """ Remove all occurrence data that is beyond the timeframe away. """
         stale_terms = []
         for qk, terms in self.cardinality_cache.items():
@@ -995,7 +1009,7 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
                 event = {self.ts_field: timestamp}
                 if 'query_key' in self.conf:
                     event.update({self.conf['query_key']: qk})
-                self.check_for_match(qk, event, False)
+                yield from self.check_for_match(qk, event, False)
 
 
 class BaseAggregationRuleType(RuleType, AcceptsAggregationDataMixin):
@@ -1029,28 +1043,28 @@ class BaseAggregationRuleType(RuleType, AcceptsAggregationDataMixin):
     def generate_aggregation_query(self):
         raise NotImplementedError()
 
-    def add_aggregation_data(self, payload):
+    def add_aggregation_data(self, payload) -> Generator[dict, None, None]:
         for timestamp, payload_data in payload.items():
             if 'interval_aggs' in payload_data:
-                self.unwrap_interval_buckets(timestamp, None, payload_data['interval_aggs']['buckets'])
+                yield from self.unwrap_interval_buckets(timestamp, None, payload_data['interval_aggs']['buckets'])
             elif 'bucket_aggs' in payload_data:
-                self.unwrap_term_buckets(timestamp, payload_data['bucket_aggs']['buckets'])
+                yield from self.unwrap_term_buckets(timestamp, payload_data['bucket_aggs']['buckets'])
             else:
-                self.check_for_matches(timestamp, None, payload_data)
+                yield from self.check_for_matches(timestamp, None, payload_data)
 
     def unwrap_interval_buckets(self, timestamp, query_key, interval_buckets):
         for interval_data in interval_buckets:
             # Use bucket key here instead of start_time for more accurate match timestamp
-            self.check_for_matches(ts_to_dt(interval_data['key_as_string']), query_key, interval_data)
+            yield from self.check_for_matches(ts_to_dt(interval_data['key_as_string']), query_key, interval_data)
 
     def unwrap_term_buckets(self, timestamp, term_buckets):
         for term_data in term_buckets:
             if 'interval_aggs' in term_data:
-                self.unwrap_interval_buckets(timestamp, term_data['key'], term_data['interval_aggs']['buckets'])
+                yield from self.unwrap_interval_buckets(timestamp, term_data['key'], term_data['interval_aggs']['buckets'])
             else:
-                self.check_for_matches(timestamp, term_data['key'], term_data)
+                yield from self.check_for_matches(timestamp, term_data['key'], term_data)
 
-    def check_for_matches(self, timestamp, query_key, aggregation_data):
+    def check_for_matches(self, timestamp, query_key, aggregation_data) -> Generator[dict, None, None]:
         raise NotImplementedError()
 
 
@@ -1086,7 +1100,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
 
     def check_for_matches(self, timestamp, query_key, aggregation_data):
         if 'compound_query_key' in self.conf:
-            self.check_matches_recursive(timestamp, query_key, aggregation_data, self.conf['compound_query_key'], {})
+            yield from self.check_matches_recursive(timestamp, query_key, aggregation_data, self.conf['compound_query_key'], {})
         else:
             metric_val = aggregation_data[self.metric_key]['value']
             if self.crossed_thresholds(metric_val):
@@ -1097,7 +1111,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
                 extra = {'num_events': 1,
                          'began_at': timestamp,
                          'ended_at': timestamp}
-                self.add_match(extra, match)
+                yield self.add_match(extra, match)
 
     def check_matches_recursive(self, timestamp, query_key, aggregation_data, compound_keys, match_data):
         if len(compound_keys) < 1:
@@ -1107,7 +1121,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
         match_data[compound_keys[0]] = aggregation_data['key']
         if 'bucket_aggs' in aggregation_data:
             for bucket in aggregation_data['bucket_aggs']['buckets']:
-                self.check_matches_recursive(timestamp, query_key, bucket, compound_keys[1:], match_data)
+                yield from self.check_matches_recursive(timestamp, query_key, bucket, compound_keys[1:], match_data)
         else:
             metric_val = aggregation_data[self.metric_key]['value']
             if self.crossed_thresholds(metric_val):
@@ -1121,7 +1135,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
                 extra = {'num_events': 1,
                          'began_at': timestamp,
                          'ended_at': timestamp}
-                self.add_match(extra, match_data)
+                yield self.add_match(extra, match_data)
 
     def crossed_thresholds(self, metric_value):
         if metric_value is None:
@@ -1160,7 +1174,7 @@ class SpikeMetricAggregationRuleType(BaseAggregationRuleType, SpikeRuleType):
         else:
             return {self.metric_key: {self.conf['metric_agg_type']: {'field': self.conf['metric_agg_key']}}}
 
-    def add_aggregation_data(self, payload):
+    def add_aggregation_data(self, payload) -> Generator[dict, None, None]:
         """
         BaseAggregationRuleType.add_aggregation_data unpacks our results and runs checks directly against hardcoded
         cutoffs.
@@ -1169,12 +1183,12 @@ class SpikeMetricAggregationRuleType(BaseAggregationRuleType, SpikeRuleType):
         """
         for timestamp, payload_data in payload.items():
             if 'bucket_aggs' in payload_data:
-                self.unwrap_term_buckets(timestamp, payload_data['bucket_aggs'])
+                yield from self.unwrap_term_buckets(timestamp, payload_data['bucket_aggs'])
             else:
                 # no time / term split, just focus on aggregations
                 event = {self.ts_field: timestamp}
                 agg_value = payload_data[self.metric_key]['value']
-                self.handle_event(event, agg_value, 'all')
+                yield from self.handle_event(event, agg_value, 'all')
 
     def unwrap_term_buckets(self, timestamp, term_buckets, qk=None):
         """ Create separate spike event trackers for each term, handle compound query keys. """
@@ -1194,7 +1208,7 @@ class SpikeMetricAggregationRuleType(BaseAggregationRuleType, SpikeRuleType):
             event = {self.ts_field: timestamp,
                      self.conf['query_key']: qk_str}
             # Pass to SpikeRuleType's tracker
-            self.handle_event(event, agg_value, qk_str)
+            yield from self.handle_event(event, agg_value, qk_str)
 
             # Handle unpack of lowest level
             del qk[-1]
@@ -1273,7 +1287,7 @@ class PercentageMatchRuleType(BaseAggregationRuleType):
                     event = {self.ts_field: timestamp}
                     if query_key is not None:
                         event[self.conf['query_key']] = query_key
-                    self.add_match(extra, event)
+                    yield self.add_match(extra, event)
 
     def percentage_violation(self, match_percentage):
         if 'max_percentage' in self.conf and match_percentage > self.conf['max_percentage']:
