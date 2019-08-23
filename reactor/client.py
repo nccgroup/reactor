@@ -791,7 +791,7 @@ class Client(object):
 
     def flush_writeback(self):
         """ Flush the thread local `writeback_cache` and clear. """
-        if hasattr(self.thread_data, 'writeback_cache'):
+        if hasattr(self.thread_data, 'writeback_cache') and self.thread_data.writeback_cache:
             self.es_client.bulk(self.thread_data.writeback_cache)
             self.thread_data.writeback_cache.clear()
 
