@@ -21,6 +21,8 @@ cache:
   only:
     - branches
     - merge_requests
+  except:
+    - dev
   before_script:
     - python -V
     - pip install virtualenv
