@@ -22,7 +22,7 @@ cache:
     - branches
     - merge_requests
   except:
-    - dev
+    - feature/*
   before_script:
     - python -V
     - pip install virtualenv
