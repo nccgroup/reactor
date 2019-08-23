@@ -4,7 +4,7 @@ import json
 from reactor import elasticsearch_client
 
 
-with open('/home/reactor/tests/integration/logs.ndjson', 'r') as f:
+with open('./tests/integration/logs.ndjson', 'r') as f:
     logs = [json.loads(line.strip()) for line in f.readlines()]
 es_client = elasticsearch_client({
     'host': 'elasticsearch',
@@ -22,7 +22,7 @@ if es_client.indices.exists('reactor_logs'):
 # Create `reactor_logs` index with settings and mappings
 print(' [.] Creating index')
 es_client.indices.create('reactor_logs',
-                         body=json.load(open('/home/reactor/tests/integration/logs-index-%d.json' % es_client.es_version[0], 'r')))
+                         body=json.load(open('./tests/integration/logs-index-%d.json' % es_client.es_version[0], 'r')))
 
 # Insert some logs to be tested against
 print(' [.] Inserting data')
