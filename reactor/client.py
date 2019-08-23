@@ -1,30 +1,32 @@
-import apscheduler.schedulers.background
-import croniter
 import datetime
-import dateutil.tz
-import elasticsearch
-import elasticsearch.helpers
 import logging
 import random
+import threading
 import time
 import traceback
-
 from functools import lru_cache
-
-import reactor.ruletype
-from reactor.loader import Rule, RuleLoader
 from typing import Optional
+
+import apscheduler.schedulers.background
+import croniter
+import dateutil.tz
+import elasticsearch.helpers
+import reactor.kibana
+import reactor.ruletype
+from elasticsearch import Elasticsearch
 from reactor.exceptions import ReactorException, QueryException
+from reactor.loader import Rule, RuleLoader
 from reactor.util import (
     reactor_logger,
     dt_now, dt_to_ts, ts_to_dt, unix_to_dt, pretty_ts,
     dots_get,
     elasticsearch_client,
 )
-import reactor.kibana
 
 
 class Client(object):
+
+    thread_data = threading.local()
 
     def __init__(self, conf: dict, args: dict):
         self.mode = args.get('mode', 'default')
@@ -157,6 +159,8 @@ class Client(object):
         # Start the clock
         run_start = time.time()
 
+        self.thread_data.writeback_cache = []
+
         # If there are pending aggregate matches, try processing them
         while rule.agg_matches:
             match = rule.agg_matches.pop()
@@ -179,6 +183,9 @@ class Client(object):
         rule.num_duplicates = 0
         rule.total_hits = 0
         rule.cumulative_hits = 0
+        rule.type.num_matches = 0
+        rule.alerts_sent = 0
+        rule.alerts_silenced = 0
 
         # Prepare the self before running it
         try:
@@ -191,75 +198,30 @@ class Client(object):
         tmp_end_time = rule.start_time
         while (end_time - rule.start_time) > segment_size:
             tmp_end_time = tmp_end_time + segment_size
-            if not self.run_query(rule, rule.start_time, tmp_end_time):
-                return 0, 0, 0
+            for extra, match in self.run_query(rule, rule.start_time, tmp_end_time):
+                self.process_alert(rule, extra, match)
             rule.cumulative_hits += rule.num_hits
             rule.num_hits = 0
             rule.start_time = tmp_end_time
-            rule.type.garbage_collect(tmp_end_time)
+            for extra, match in rule.type.garbage_collect(tmp_end_time):
+                self.process_alert(rule, extra, match)
 
         # Guarantee that at least one search search occurs
         if rule.conf('aggregation_query_element'):
             if end_time - tmp_end_time == segment_size:
-                self.run_query(rule, tmp_end_time, end_time)
+                for extra, match in self.run_query(rule, tmp_end_time, end_time):
+                    self.process_alert(rule, extra, match)
                 rule.cumulative_hits += rule.num_hits
             elif (rule.original_start_time - tmp_end_time).total_seconds() == 0:
                 return 0, 0, 0
             else:
                 end_time = tmp_end_time
         else:
-            if not self.run_query(rule, rule.start_time, end_time):
-                return 0, 0, 0
+            for extra, match in self.run_query(rule, rule.start_time, end_time):
+                self.process_alert(rule, extra, match)
             rule.cumulative_hits += rule.num_hits
-            rule.type.garbage_collect(end_time)
-
-        # Process any new matches
-        num_matches = len(rule.type.matches)
-        alerts_sent = 0
-        num_silenced = 0
-        while rule.type.matches:
-            extra, match = rule.type.matches.pop(0)
-            alert = rule.get_alert_body(extra, match, dt_now())
-
-            # If realert is set, silence the rule for that duration
-            # Silence is cached by query_key, if it exists
-            # Default realert time is 0 seconds
-            match_time = ts_to_dt(dots_get(match, rule.conf('timestamp_field')))
-            silence_key = rule.get_query_key_value(match) or '_silence'
-            silenced = self.is_silenced(rule, silence_key, match_time)
-
-            # If not silenced and there is a realert, silence the rule
-            if not silenced and rule.conf('realert'):
-                next_alert, exponent = self.next_alert_time(rule, silence_key, match_time or dt_now())
-                self.set_realert(rule, silence_key, next_alert, exponent, alert['uuid'])
-
-            if rule.conf('run_enhancements_first'):
-                try:
-                    for enhancement in rule.match_enhancements:
-                        try:
-                            enhancement.process(match)
-                        except ReactorException as e:
-                            self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name})
-
-                    for enhancement in rule.alert_enhancements:
-                        try:
-                            enhancement.process(alert)
-                        except ReactorException as e:
-                            self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name})
-
-                except reactor.enhancement.DropException:
-                    # Drop this match
-                    continue
-
-            # If no aggregation, alert immediately
-            if not rule.conf('aggregation'):
-                num_sent = self.alert([alert], rule, silenced=silenced)
-                alerts_sent += num_sent
-                num_silenced += num_sent if silenced else 0
-                continue
-
-            # Add it as an aggregated alert
-            self.add_aggregated_alert(alert, rule)
+            for extra, match in rule.type.garbage_collect(end_time):
+                self.process_alert(rule, extra, match)
 
         # Mark this end time for next run's start
         rule.previous_end_time = end_time
@@ -270,13 +232,15 @@ class Client(object):
                 'rule_name': rule.name,
                 'end_time': end_time,
                 'start_time': rule.original_start_time,
-                'matches': num_matches,
+                'matches': rule.type.num_matches,
                 'hits': max(rule.num_hits, rule.cumulative_hits),
                 '@timestamp': dt_now(),
                 'time_taken': time_taken}
         self.writeback('status', body)
 
-        return num_matches, alerts_sent, num_silenced
+        self.flush_writeback()
+
+        return rule.type.num_matches, rule.alerts_sent, rule.alerts_silenced
 
     def run_query(self, rule: Rule, start_time=None, end_time=None) -> Optional[list]:
         """ Query for the rule and pass all of the results to the RuleType instance. """
@@ -311,13 +275,13 @@ class Client(object):
                 return []
             elif data:
                 if rule.conf('use_count_query'):
-                    rule.type.add_count_data(data)
+                    yield from rule.type.add_count_data(data)
                 elif rule.conf('use_terms_query'):
-                    rule.type.add_terms_data(data)
+                    yield from rule.type.add_terms_data(data)
                 elif rule.conf('aggregation_query_element'):
-                    rule.type.add_aggregation_data(data)
+                    yield from rule.type.add_aggregation_data(data)
                 else:
-                    rule.type.add_hits_data(data)
+                    yield from rule.type.add_hits_data(data)
 
             # We are complete if we don't have a scroll id or num of hits is equal to total hits
             complete = not (rule.scroll_id and rule.num_hits < rule.total_hits)
@@ -325,6 +289,49 @@ class Client(object):
         # Tidy up scroll_id (after scrolling is finished)
         rule.scroll_id = None
         return data
+
+    def process_alert(self, rule: Rule, extra: dict, match: dict):
+        alert = rule.get_alert_body(extra, match, dt_now())
+
+        # If realert is set, silence the rule for that duration
+        # Silence is cached by query_key, if it exists
+        # Default realert time is 0 seconds
+        match_time = ts_to_dt(dots_get(match, rule.conf('timestamp_field')))
+        silence_key = rule.get_query_key_value(match) or '_silence'
+        silenced = self.is_silenced(rule, silence_key, match_time)
+
+        # If not silenced and there is a realert, silence the rule
+        if not silenced and rule.conf('realert'):
+            next_alert, exponent = self.next_alert_time(rule, silence_key, match_time or dt_now())
+            self.set_realert(rule, silence_key, next_alert, exponent, alert['uuid'])
+
+        if rule.conf('run_enhancements_first'):
+            try:
+                for enhancement in rule.match_enhancements:
+                    try:
+                        enhancement.process(match)
+                    except ReactorException as e:
+                        self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name})
+
+                for enhancement in rule.alert_enhancements:
+                    try:
+                        enhancement.process(alert)
+                    except ReactorException as e:
+                        self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name})
+
+            except reactor.enhancement.DropException:
+                # Drop this match
+                return
+
+        # If no aggregation, alert immediately
+        if not rule.conf('aggregation'):
+            num_sent = self.alert([alert], rule, silenced=silenced)
+            rule.alerts_sent += num_sent
+            rule.alerts_silenced += num_sent if silenced else 0
+            return
+
+        # Add it as an aggregated alert
+        self.add_aggregated_alert(alert, rule)
 
     def test_rule(self, rule: Rule, end_time, start_time=None):
         try:
@@ -362,7 +369,7 @@ class Client(object):
         self.scheduler.start()
         while self.running:
             # If an end time was specified and it has elapsed
-            if 'end' in self.args and self.args['end'] < dt_now():
+            if self.args['end'] and self.args['end'] < dt_now():
                 # If the rule have been loaded and every run has been run once
                 if self.loader.loaded and all([r.has_run_once for r in self.loader]):
                     reactor_logger.info('Reached end time, shutting down reactor')
@@ -443,6 +450,7 @@ class Client(object):
                                    next_run_time=next_run_time)
 
     def handle_rule_execution(self, rule: Rule):
+        execution_start = dt_now()
         next_run = datetime.datetime.utcnow() + rule.run_every
 
         # Set end time based on the rule's delay
@@ -497,9 +505,14 @@ class Client(object):
         rule.initial_start_time = None
         self.garbage_collect(rule)
         self.reset_rule_schedule(rule)
+
         # Mark the rule has having been run at least once
         rule.has_run_once = True
-        reactor_logger.info('Rule %s run once', rule.name)
+
+        reactor_logger.debug('Execution from %s to %s "%s" took %s',
+                             pretty_ts(rule.original_start_time, rule.conf('use_local_time')),
+                             pretty_ts(end_time, rule.conf('use_local_time')),
+                             rule.name, dt_now() - execution_start)
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run
@@ -753,14 +766,34 @@ class Client(object):
             reactor_logger.debug('Skipping writing to ElasticSearch "%s": %s' % (index, writeback_body))
             return None
 
+        # Add the alert to the cache
+        if rule and doc_type == 'alert':
+            self.alerts_cache[rule.uuid][doc_id] = writeback_body
+
         try:
             doc_type = '_doc' if self.es_client.es_version_at_least(6) else doc_type
-            if update:
+            # If there is a writeback cache available, cache the action for a later bulk request
+            if hasattr(self.thread_data, 'writeback_cache'):
+                action = 'update' if update else 'index'
+                self.thread_data.writeback_cache.extend([
+                    {action: {'_id': doc_id, '_index': index, '_type': doc_type}},
+                    {'doc': writeback_body} if update else writeback_body
+                ])
+                # Automatically flush the writeback cache if limit is reached (2 items in list per action)
+                if len(self.thread_data.writeback_cache) >= 2 * self.conf['writeback_flush']:
+                    self.flush_writeback()
+            elif update:
                 return self.es_client.update(id=doc_id, index=index, doc_type=doc_type, body={'doc': writeback_body})
             else:
                 return self.es_client.index(id=doc_id, index=index, doc_type=doc_type, body=writeback_body)
         except elasticsearch.ElasticsearchException as e:
             reactor_logger.exception('Error writing alert info to ElasticSearch: %s' % e)
+
+    def flush_writeback(self):
+        """ Flush the thread local `writeback_cache` and clear. """
+        if hasattr(self.thread_data, 'writeback_cache'):
+            self.es_client.bulk(self.thread_data.writeback_cache)
+            self.thread_data.writeback_cache.clear()
 
     def find_recent_pending_alerts(self, time_limit):
         """ Queries writeback ElasticSearch to find alerts that did not send and are newer than the time limit. """
@@ -909,6 +942,9 @@ class Client(object):
 
     def set_realert(self, rule: Rule, silence_cache_key: str, until: datetime.datetime, exponent: int, alert_uuid=None):
         """ Write a silence to ElasticSearch for silence_cache_key until timestamp. """
+        # Round up the silence until
+        until = until.replace(microsecond=0) + datetime.timedelta(seconds=1)
+        
         body = {'exponent': exponent,
                 'rule_uuid': rule.uuid,
                 'silence_key': rule.uuid + '.' + silence_cache_key,
@@ -917,6 +953,7 @@ class Client(object):
                 'until': until}
 
         self.silence_cache[rule.uuid][silence_cache_key] = (until, exponent, alert_uuid)
+        rule.type.set_silence(silence_cache_key, until)
         return self.writeback('silence', body)
 
     def is_silenced(self, rule: Rule, silence_key=None, timestamp=None):
@@ -1045,9 +1082,10 @@ class Client(object):
             return timestamp + rule.conf('exponential_realert'), exponent - 1
         return timestamp + wait, exponent
 
-    def get_index_start(self, index: str, timestamp_field: str = '@timestamp') -> str:
+    def get_index_start(self, es_client: Elasticsearch, index: str, timestamp_field: str = '@timestamp') -> str:
         """
         Query for one result sorted by timestamp to find the beginning of the index.
+        :param es_client: The rule's elasticsearch client
         :param index: The index of which to find the earliest event
         :param timestamp_field: The field where the timestamp is stored
         :return: Timestamp of the earliest event
@@ -1055,11 +1093,11 @@ class Client(object):
         query = {'sort': {timestamp_field: {'ord': 'asc'}}}
         try:
             if self.es_client.es_version_at_least(6):
-                res = self.es_client.search(index=index, size=1, body=query,
-                                            _source_includes=[timestamp_field], ignore_unavailable=True)
+                res = es_client.search(index=index, size=1, body=query,
+                                       _source_includes=[timestamp_field], ignore_unavailable=True)
             else:
-                res = self.es_client.search(index=index, size=1, body=query,
-                                            _source_include=[timestamp_field], ignore_unavailable=True)
+                res = es_client.search(index=index, size=1, body=query,
+                                       _source_include=[timestamp_field], ignore_unavailable=True)
         except elasticsearch.ElasticsearchException as e:
             # An exception was raised, return a date before the epoch
             self.handle_error("Elasticsearch query error: %s" % str(e), {'index': index, 'query': query})

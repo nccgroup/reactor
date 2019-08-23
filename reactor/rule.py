@@ -1,22 +1,22 @@
 import copy
 import datetime
-import elasticsearch
-
-import reactor.enhancement
 from typing import List, Optional
+
+import elasticsearch
+import reactor.enhancement
 from reactor.exceptions import ReactorException, QueryException
+from reactor.kibana import filters_from_kibana
+from reactor.ruletype import RuleType
 from reactor.util import (
     generate_id,
     dots_get, dots_set,
     elasticsearch_client, ElasticSearchClient,
     reactor_logger,
-    dt_now, pretty_ts,
+    pretty_ts,
     ts_to_dt, dt_to_ts, unix_to_dt, unixms_to_dt, dt_to_unix, dt_to_unixms, ts_to_dt_with_format, dt_to_ts_with_format,
     total_seconds, add_raw_postfix,
     format_index,
 )
-from reactor.ruletype import RuleType
-from reactor.kibana import filters_from_kibana
 
 
 class Rule(object):
@@ -32,6 +32,8 @@ class Rule(object):
         self.num_duplicates = 0
         self.total_hits = 0
         self.cumulative_hits = 0
+        self.alerts_sent = 0
+        self.alerts_silenced = 0
         self._max_hits = float('inf')
 
         # Timers

@@ -16,6 +16,10 @@ properties:
     type: string
     title: "Alias for all alert indices"
     default: "reactor_alerts"
+  writeback_flush:
+    type: integer
+    title: "Maximum number of writeback actions to cache before flushing"
+    default: 1000
 
   alert_time_limit:
     default: {days: 2}
