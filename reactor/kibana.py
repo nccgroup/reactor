@@ -83,7 +83,7 @@ def upload_dashboard(db, rule, match):
 
     # Upload
     es = elasticsearch_client(rule['elasticsearch'])
-    # TODO: doc_type = _doc for elastic >= 6
+    # TODO: doc_type = _doc for elastic >= 6 and index may have changed
     res = es.index(index='kibana-int',
                    doc_type='temp',
                    body=db_body)
@@ -103,9 +103,17 @@ def get_dashboard(rule, db_name):
         raise ReactorException("use_kibana_dashboard undefined")
     query = {'query': {'term': {'_id': db_name}}}
     try:
-        # TODO use doc_type = _doc
-        # TODO: decide whether to support older versions of ES (probably not)
-        res = es.deprecated_search(index='kibana-int', doc_type='dashboard', body=query, _source_include=['dashboard'])
+        # TODO: discover the kibana dashboard index and doc type for newer versions of elasticsearch
+        index = 'kibana-int'
+        if rule.es_client.es_version_at_least(6, 6):
+            res = rule.es_client.search(index=index, size=1, body=query,
+                                        _source_includes=['dashboard'])
+        elif rule.es_client.es_version_at_least(6):
+            res = rule.es_client.search(index=index, size=1, body=query,
+                                        _source_include=['dashboard'])
+        else:
+            res = rule.es_client.search(index=index, doc_type='dashboard',
+                                        size=1, body=query, _source_include=['dashboard'])
     except elasticsearch.ElasticsearchException as e:
         raise ReactorException("Error querying for dashboard: %s" % e)
 
