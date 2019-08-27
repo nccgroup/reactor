@@ -516,7 +516,6 @@ class Client(object):
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run
-        # TODO: potentially add next_start_time/next_run_time/next_min_start_time in method parameters
         if rule.conf('limit_execution') and rule.next_start_time:
             self.scheduler.modify_job(job_id=rule.hash, next_run_time=rule.next_run_time)
             # If we are preventing covering non-scheduled time periods, reset min_start_time and previous_end_time
@@ -655,8 +654,9 @@ class Client(object):
                 else:
                     timeframe = rule.conf('timeframe', datetime.timedelta(minutes=10))
 
-                start = ts_to_dt(dots_get(alert['match_body'], rule.conf('timestamp_field'))) - timeframe
-                end = ts_to_dt(dots_get(alert['match_body'], rule.conf('timestamp_field'))) + datetime.timedelta(minutes=10)
+                match_time = ts_to_dt(dots_get(alert['match_body'], rule.conf('timestamp_field')))
+                start = match_time - timeframe
+                end = match_time + datetime.timedelta(minutes=10)
                 keys = rule.conf('top_count_keys')
                 counts = self.get_top_counts(rule, start, end, keys, qk=qk)
                 alert['match_body'].update(counts)

@@ -42,6 +42,9 @@ class Rule(object):
         self.minimum_start_time = None
         self.original_start_time = None
         self.previous_end_time = None
+        self.next_start_time = None
+        self.next_run_time = None
+        self.next_min_start_time = None
 
         # Misc.
         self.agg_alerts = []
