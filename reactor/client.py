@@ -558,8 +558,6 @@ class Client(object):
                             rule.current_aggregate_id.pop(qk)
                             break
 
-                # TODO: No need to delete as we will be overriding existing id
-
         for rule in self.loader:
             if rule.agg_alerts:
                 for aggregation_key_value, aggregation_alert_time in rule.aggregate_alert_time.items():
@@ -733,7 +731,7 @@ class Client(object):
                 # Set all matches to aggregate together
                 if agg_id:
                     alert['aggregate_id'] = agg_id
-                res = self.writeback('alert', alert, rule, doc_id=alert['uuid'], update=retried)
+                res = self.writeback('alert', alert, rule, doc_id=alert['uuid'], update=retried or '_id' in alert)
                 if res and not agg_id:
                     agg_id = res['_id']
 
@@ -838,7 +836,6 @@ class Client(object):
 
             for match in res['hits']['hits']:
                 matches.append(match['_source'])
-                # TODO: no need to delete as we will update existing
         except (KeyError, elasticsearch.ElasticsearchException) as e:
             self.handle_error('Error fetching aggregated matches: %s' % e, {'id': '_id'})
         return matches
