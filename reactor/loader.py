@@ -85,7 +85,7 @@ class RuleLoader(object):
 
             # Does this rule already exist, copy over some properties
             if existing_rule:
-                rule.agg_matches = existing_rule.agg_matches
+                rule.agg_alerts = existing_rule.agg_alerts
                 rule.current_aggregate_id = existing_rule.current_aggregate_id
                 rule.processed_hits = existing_rule.processed_hits
                 rule.minimum_start_time = existing_rule.minimum_start_time

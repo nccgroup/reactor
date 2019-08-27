@@ -162,9 +162,9 @@ class Client(object):
         self.thread_data.writeback_cache = []
 
         # If there are pending aggregate matches, try processing them
-        while rule.agg_matches:
-            match = rule.agg_matches.pop()
-            self.add_aggregated_alert(match, rule)
+        while rule.agg_alerts:
+            alert = rule.agg_alerts.pop()
+            self.add_aggregated_alert(alert, rule)
 
         # Start from provided time if it's given
         if start_time:
@@ -562,16 +562,16 @@ class Client(object):
                 # TODO: No need to delete as we will be overriding existing id
 
         for rule in self.loader:
-            if rule.agg_matches:
+            if rule.agg_alerts:
                 for aggregation_key_value, aggregation_alert_time in rule.aggregate_alert_time.items():
                     if dt_now() > aggregation_alert_time:
                         alertable_matches = [
-                            agg_match for agg_match in rule.agg_matches
+                            agg_match for agg_match in rule.agg_alerts
                             if rule.get_aggregation_key_value(agg_match) == aggregation_key_value
                         ]
                         alerts_sent += self.alert(alertable_matches, rule)
-                        rule.agg_matches = [
-                            agg_match for agg_match in rule.agg_matches
+                        rule.agg_alerts = [
+                            agg_match for agg_match in rule.agg_alerts
                             if rule.get_aggregation_key_value(agg_match) != aggregation_key_value
                         ]
 
@@ -867,12 +867,13 @@ class Client(object):
 
         return res['hits']['hits'][0]
 
-    def add_aggregated_alert(self, match: dict, rule: Rule):
+    def add_aggregated_alert(self, alert: dict, rule: Rule):
         """ Save a match as pending aggregate alert to ElasticSearch. """
 
+        match_body = alert['match_body']
         # Optionally include the 'aggregation_key' as a dimension for aggregations
-        aggregation_key_value = rule.get_aggregation_key_value(match)
-        match_time = ts_to_dt(dots_get(match, rule.conf('timestamp_field')))
+        aggregation_key_value = rule.get_aggregation_key_value(match_body)
+        match_time = ts_to_dt(dots_get(match_body, rule.conf('timestamp_field')))
 
         if (not rule.current_aggregate_id.get(aggregation_key_value) or
                 (rule.aggregate_alert_time.get(aggregation_key_value) < match_time)):
@@ -913,13 +914,11 @@ class Client(object):
             reactor_logger.info('Adding alert for %s to aggregation(id: %s, aggregation_key: %s), next alert at %s',
                                 rule.name, agg_id, aggregation_key_value, alert_time)
 
-        # TODO: update this
-        alert_body = self.get_alert_body(match, rule, False, alert_time)
         if agg_id:
-            alert_body['aggregate_id'] = agg_id
+            alert['aggregate_id'] = agg_id
         if aggregation_key_value:
-            alert_body['aggregation_key'] = aggregation_key_value
-        res = self.writeback('alert', alert_body, rule)
+            alert['aggregation_key'] = aggregation_key_value
+        res = self.writeback('alert', alert, rule)
 
         # If new aggregation, save id
         if res and not agg_id:
@@ -927,7 +926,7 @@ class Client(object):
 
         # Couldn't write to match to ElasticSearch, save it in memory for new
         if not res:
-            rule.agg_matches.append(match)
+            rule.agg_alerts.append(alert)
 
         return res
 

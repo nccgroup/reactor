@@ -44,7 +44,7 @@ class Rule(object):
         self.previous_end_time = None
 
         # Misc.
-        self.agg_matches = []
+        self.agg_alerts = []
         self.aggregate_alert_time = {}
         self.current_aggregate_id = {}
         self.processed_hits = {}
