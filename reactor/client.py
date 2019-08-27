@@ -564,14 +564,14 @@ class Client(object):
             if rule.agg_alerts:
                 for aggregation_key_value, aggregation_alert_time in rule.aggregate_alert_time.items():
                     if dt_now() > aggregation_alert_time:
-                        alertable_matches = [
-                            agg_match for agg_match in rule.agg_alerts
-                            if rule.get_aggregation_key_value(agg_match) == aggregation_key_value
+                        alertable_alerts = [
+                            agg_alert for agg_alert in rule.agg_alerts
+                            if rule.get_aggregation_key_value(agg_alert['match_body']) == aggregation_key_value
                         ]
-                        alerts_sent += self.alert(alertable_matches, rule)
+                        alerts_sent += self.alert(alertable_alerts, rule)
                         rule.agg_alerts = [
-                            agg_match for agg_match in rule.agg_alerts
-                            if rule.get_aggregation_key_value(agg_match) != aggregation_key_value
+                            agg_alert for agg_alert in rule.agg_alerts
+                            if rule.get_aggregation_key_value(agg_alert['match_body']) != aggregation_key_value
                         ]
 
         return alerts_sent
