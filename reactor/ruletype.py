@@ -452,13 +452,12 @@ class FlatlineRuleType(FrequencyRuleType):
         # Match if, after removing old events, we hit num_events
         count = self.occurrences[key].count()
         if count < self.conf['threshold']:
-            # Do a deep-copy, otherwise we lost the datetime type in the timestamp field of the last event
+            # Do a deep-copy, otherwise we lose the datetime type in the timestamp field of the last event
             extra = {'key': key,
                      'count': count,
                      'num_events': count,
-                     # TODO: consider what to do if len(self.occurrences[key]) == 1
-                     'began_at': self.get_ts(self.occurrences[key].data[0]),
-                     'ended_at': self.get_ts(self.occurrences[key].data[-1])}
+                     'began_at': self.first_event[key],
+                     'ended_at': most_recent_ts}
             event = copy.deepcopy(self.occurrences[key].data[-1][0])
             yield self.add_match(extra, event)
 
