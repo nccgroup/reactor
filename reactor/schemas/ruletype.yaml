@@ -19,7 +19,7 @@ oneOf:
 
 # setting dependencies
 dependencies:
-  scan_entire_timeframe: {required: timeframe}
+  scan_entire_timeframe: {required: [timeframe]}
 
 properties:
 
