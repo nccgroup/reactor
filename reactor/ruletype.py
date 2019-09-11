@@ -1,6 +1,5 @@
 import copy
 import datetime
-import os
 from typing import Generator
 
 from reactor.exceptions import ReactorException, ConfigException
@@ -151,8 +150,7 @@ class AcceptsAggregationDataMixin(object):
 
 
 class AnyRuleType(RuleType, AcceptsHitsDataMixin):
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-any.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-any.yaml', __file__)
 
     """ A rule that will match on any input data. """
     def add_hits_data(self, data: list) -> Generator[dict, None, None]:
@@ -202,8 +200,7 @@ class BlacklistRuleType(CompareRuleType):
     """ A CompareRuleType where the compare function checks a given key against a blacklist. """
     required_options = frozenset(['compare_key', 'blacklist'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-blacklist.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-blacklist.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(BlacklistRuleType, self).__init__(conf)
@@ -235,8 +232,7 @@ class WhitelistRuleType(CompareRuleType):
     """ A CompareRuleType where the compare function checks a given key against a whitelist. """
     required_options = frozenset(['compare_key', 'whitelist', 'ignore_null'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-whitelist.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-whitelist.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(WhitelistRuleType, self).__init__(conf)
@@ -271,8 +267,7 @@ class ChangeRuleType(CompareRuleType):
     """ A rule that will store values for a certain term and match if those values change. """
     required_options = frozenset(['query_key', 'compound_compare_key', 'ignore_null'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-change.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-change.yaml', __file__)
 
     change_map = {}
     occurrence_time = {}
@@ -332,8 +327,7 @@ class FrequencyRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, A
     """ A RuleType that matches if num_events number of events occur within a timeframe. """
     required_options = frozenset(['num_events', 'timeframe'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-frequency.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator,  'schemas/ruletype-frequency.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(FrequencyRuleType, self).__init__(conf)
@@ -425,8 +419,7 @@ class FlatlineRuleType(FrequencyRuleType):
     """ A FrequencyRuleType that matches when there is low number of events within a timeframe. """
     required_options = frozenset(['timeframe', 'threshold'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-flatline.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-flatline.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(FlatlineRuleType, self).__init__(conf)
@@ -499,8 +492,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
     """ A RuleType that uses two sliding windows to compare relative event frequency. """
     required_options = frozenset(['timeframe', 'spike_height', 'spike_type'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-spike.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-spike.yaml', __file__)
 
     def __init__(self, *args):
         super(SpikeRuleType, self).__init__(*args)
@@ -665,8 +657,7 @@ class SpikeRuleType(RuleType, AcceptsHitsDataMixin, AcceptsCountDataMixin, Accep
 
 
 class NewTermRuleType(RuleType, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-new_term.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-new_term.yaml', __file__)
 
     """ A RuleType that detects a new value in a list of fields. """
     # TODO: alter self.seen_values to be a mapping of value to timestamp of last seen - add option to forget old terms
@@ -931,8 +922,7 @@ class CardinalityRuleType(RuleType, AcceptsHitsDataMixin):
     """ A RuleType that matches if cardinality of a field is above or below a threshold within a timeframe. """
     required_options = frozenset(['timeframe', 'cardinality_field'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-cardinality.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-cardinality.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(CardinalityRuleType, self).__init__(conf)
@@ -1072,8 +1062,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
 
     required_options = frozenset(['metric_agg_key', 'metric_agg_type'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-metric_aggregation.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator,  'schemas/ruletype-metric_aggregation.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(MetricAggregationRuleType, self).__init__(conf)
@@ -1149,8 +1138,7 @@ class MetricAggregationRuleType(BaseAggregationRuleType):
 class SpikeMetricAggregationRuleType(BaseAggregationRuleType, SpikeRuleType):
     """ A rule that matches when there is a spike in an aggregated event compared to its reference window, """
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-spike_metric_aggregation.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-spike_metric_aggregation.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(SpikeMetricAggregationRuleType, self).__init__(conf)
@@ -1228,8 +1216,7 @@ class SpikeMetricAggregationRuleType(BaseAggregationRuleType, SpikeRuleType):
 class PercentageMatchRuleType(BaseAggregationRuleType):
     required_options = frozenset(['match_bucket_filter'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype-percentage_match.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-percentage_match.yaml', __file__)
 
     def __init__(self, conf: dict):
         super(PercentageMatchRuleType, self).__init__(conf)

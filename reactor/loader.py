@@ -20,8 +20,7 @@ from reactor.rule import Rule
 
 
 class RuleLoader(object):
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype.yaml', __file__)
     conf_schema = None
 
     def __init__(self, conf: dict, base_conf: dict, mappings: dict):
@@ -281,8 +280,7 @@ class RuleLoader(object):
 
 
 class FileRuleLoader(RuleLoader):
-    conf_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/loader-file.yaml'))
+    conf_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/loader-file.yaml', __file__)
 
     def discover(self, use_rules: list = None) -> List[str]:
         # Passing a list of use rules directly will bypass rules_folder and .yaml checks

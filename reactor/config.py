@@ -34,7 +34,7 @@ default_mappings = {
 }
 
 
-config_schema = yaml_schema(SetDefaultsDraft7Validator, os.path.join(os.path.dirname(__file__), 'schemas/config.yaml'))
+config_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/config.yaml', __file__)
 
 
 def parse_config(filename: str, defaults: dict = None, overwrites: dict = None) -> dict:

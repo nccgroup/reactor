@@ -10,7 +10,14 @@ from jsonschema.compat import (
 )
 
 
-def yaml_schema(validator, schema_file):
+def yaml_schema(validator, schema_file: str, relative_file: str = None):
+    """
+    :param validator: Validator to be initiated
+    :param schema_file: Path to the schema file
+    :param relative_file: (optional) File from which `schema_file` is relative
+    """
+    if relative_file is not None:
+        schema_file = os.path.join(os.path.dirname(relative_file), schema_file)
     base_uri = 'file://%s/' % os.path.dirname(schema_file)
     schema = yaml.safe_load(open(schema_file))
     return validator(schema, resolver=YamlRefResolver(base_uri, schema))
