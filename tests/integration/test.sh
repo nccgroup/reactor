@@ -16,6 +16,8 @@ python ./tests/integration/test.py
 echo " [x] Executing reactor"
 python -m reactor test --config config-test.yaml --output devnull any.yaml
 python -m reactor test --config config-test.yaml --output devnull frequency.yaml
+python -m reactor test --config config-test.yaml --output devnull frequency-count_query.yaml
+python -m reactor test --config config-test.yaml --output devnull frequency-terms_query.yaml
 python -m reactor test --config config-test.yaml --output devnull spike.yaml
 python -m reactor test --config config-test.yaml --output devnull blacklist.yaml
 python -m reactor test --config config-test.yaml --output devnull whitelist.yaml

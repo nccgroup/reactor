@@ -130,10 +130,10 @@ def import_class(class_str: str, mappings: dict = None, module=None) -> type:
 
 
 yaml_loader = None
-env_matcher = re.compile(r'\$\{([a-zA-Z_$][a-zA-Z_$0-9]*)(:[^}]+)?\}')
+env_matcher = re.compile(r'\${([a-zA-Z_$][a-zA-Z_$0-9]*)(:[^}]+)?}')
 
 
-def load_yaml(filename: str) -> Union[dict, list, None]:
+def load_yaml(filename: str) -> dict:
     global yaml_loader
     if not yaml_loader:
         try:
@@ -190,7 +190,7 @@ def dots_set(dots_dict: dict, key: str, value) -> bool:
         for sub_key in sub_keys[:-1]:
             cursor_dict[sub_key] = {} if sub_key not in cursor_dict else cursor_dict[sub_key]
             cursor_dict = cursor_dict[sub_key]
-        cursor_dict.setdefault(sub_keys[-1], value)
+        cursor_dict[sub_keys[-1]] = value
 
     return True
 

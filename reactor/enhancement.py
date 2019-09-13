@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-
-
 class BaseEnhancement(object):
     """ Enhancements take a dictionary object and modify it in some way provide enhancement. """
 

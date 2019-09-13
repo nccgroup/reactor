@@ -1,5 +1,3 @@
-import os
-
 import jsonschema
 
 import reactor
@@ -10,27 +8,33 @@ required_config = frozenset(['elasticsearch.host', 'elasticsearch.port'])
 
 default_mappings = {
     # Default rule loaders
-    'loader.file': reactor.loader.FileRuleLoader,
+    'loader': {
+        'file': reactor.loader.FileRuleLoader,
+    },
 
     # Default alerts
-    'alerter.debug': reactor.alerter.DebugAlerter,
-    'alerter.test': reactor.alerter.TestAlerter,
-    'alerter.command': reactor.alerter.CommandAlerter,
-    'alerter.email': reactor.alerter.EmailAlerter,
-    'alerter.webhook': reactor.alerter.WebhookAlerter,
+    'alerter': {
+        'debug': reactor.alerter.DebugAlerter,
+        'test': reactor.alerter.TestAlerter,
+        'command': reactor.alerter.CommandAlerter,
+        'email': reactor.alerter.EmailAlerter,
+        'webhook': reactor.alerter.WebhookAlerter,
+    },
 
     # Default rule types
-    'ruletype.any': reactor.ruletype.AnyRuleType,
-    'ruletype.frequency': reactor.ruletype.FrequencyRuleType,
-    'ruletype.spike': reactor.ruletype.SpikeRuleType,
-    'ruletype.blacklist': reactor.ruletype.BlacklistRuleType,
-    'ruletype.whitelist': reactor.ruletype.WhitelistRuleType,
-    'ruletype.change': reactor.ruletype.ChangeRuleType,
-    'ruletype.flatline': reactor.ruletype.FlatlineRuleType,
-    'ruletype.new_term': reactor.ruletype.NewTermRuleType,
-    'ruletype.cardinality': reactor.ruletype.CardinalityRuleType,
-    'ruletype.metric_aggregation': reactor.ruletype.MetricAggregationRuleType,
-    'ruletype.percentage_match': reactor.ruletype.PercentageMatchRuleType,
+    'rule': {
+        'any': reactor.rule.AnyRule,
+        'frequency': reactor.rule.FrequencyRule,
+        'spike': reactor.rule.SpikeRule,
+        'blacklist': reactor.rule.BlacklistRule,
+        'whitelist': reactor.rule.WhitelistRule,
+        'change': reactor.rule.ChangeRule,
+        'flatline': reactor.rule.FlatlineRule,
+        'new_term': reactor.rule.NewTermRule,
+        'cardinality': reactor.rule.CardinalityRule,
+        'metric_aggregation': reactor.rule.MetricAggregationRule,
+        'percentage_match': reactor.rule.PercentageMatchRule,
+    },
 }
 
 
@@ -55,8 +59,11 @@ def parse_config(filename: str, defaults: dict = None, overwrites: dict = None) 
         raise reactor.ReactorException("Invalid config file: %s\n%s" % (filename, e))
 
     # Set mapping defaults
-    for key, value in default_mappings.items():
-        dots_set_default(conf['mappings'], key, value)
+    conf.setdefault('mappings', {})
+    for key in default_mappings:
+        conf['mappings'].setdefault(key, {})
+        for name, value in default_mappings[key].items():
+            conf['mappings'][key].setdefault(name, value)
 
     # Initialise the rule loader
     rule_loader_class = dots_get(conf, 'loader.type')

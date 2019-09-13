@@ -3,7 +3,7 @@ import signal
 import sys
 
 from reactor.alerter import TestAlerter
-from reactor.client import Client
+from reactor.core import Core
 from reactor.config import parse_config
 from reactor.exceptions import ReactorException
 from reactor.util import (
@@ -16,8 +16,8 @@ from reactor.util import (
     pretty_ts
 )
 
-import requests
-requests.packages.urllib3.disable_warnings()
+import urllib3
+urllib3.disable_warnings()
 
 
 def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
@@ -219,8 +219,8 @@ def perform_init(config: dict, args: dict) -> int:
 
 def perform_validate(config: dict, args: dict) -> int:
     try:
-        client = Client(config, args)
-        client.loader.load(args)
+        core = Core(config, args)
+        core.loader.load(args)
         reactor_logger.info('All specified rules are valid')
         return 0
     except ReactorException as e:
@@ -233,14 +233,14 @@ def perform_test(config: dict, args: dict) -> int:
     start_time = args['start'] or (dt_now() - args['timeframe'])
     end_time = start_time + args['timeframe']
 
-    client = Client(config, args)
-    client.loader.load(args)
+    core = Core(config, args)
+    core.loader.load(args)
 
-    for rule in client.loader:
-        rule.type.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
+    for rule in core.loader:
+        rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
         rule.set_conf('segment_size', args['timeframe'])
         rule.max_hits = args['max_hits']
-        client.test_rule(rule, end_time, start_time=start_time)
+        core.test_rule(rule, end_time, start_time=start_time)
     return 0
 
 
@@ -250,10 +250,10 @@ def perform_hits(config: dict, args: dict) -> int:
     start_time = args['start'] or (dt_now() - args['timeframe'])
     end_time = start_time + args['timeframe']
 
-    client = Client(config, args)
-    client.loader.load(args)
+    core = Core(config, args)
+    core.loader.load(args)
 
-    for rule in client.loader:
+    for rule in core.loader:
         if args['counts']:
             hits = rule.get_hits_count(start_time, end_time, rule.get_index(start_time, end_time))
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
@@ -265,11 +265,11 @@ def perform_hits(config: dict, args: dict) -> int:
         else:
             alerter = TestAlerter(rule, {'format': args['format'], 'output': args['output']})
 
-            rule.type.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
+            rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = client.run_query(rule, start_time, end_time)
+            hits = core.run_query(rule, start_time, end_time)
             alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
@@ -282,16 +282,16 @@ def perform_hits(config: dict, args: dict) -> int:
 
 def perform_console(config: dict, args: dict) -> int:
     from reactor.console import run_console
-    run_console(Client(config, args))
+    run_console(Core(config, args))
     return 0
 
 
 def perform_silence(config: dict, args: dict) -> int:
     """ Perform the silence action. """
-    client = Client(config, args)
-    client.loader.load(args)
-    for rule in client.loader:
-        client.silence(rule, duration=args['duration'], revoke=args['revoke'])
+    core = Core(config, args)
+    core.loader.load(args)
+    for rule in core.loader:
+        core.silence(rule, duration=args['duration'], revoke=args['revoke'])
 
     return 0
 
@@ -334,7 +334,7 @@ def main(args):
 
         # Run Reactor
         else:
-            exit_code = Client(config, args).start()
+            exit_code = Core(config, args).start()
 
     except Exception as e:
         print('Raised exception %s: %s' % (type(e), e))

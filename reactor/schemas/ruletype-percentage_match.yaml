@@ -11,5 +11,5 @@ oneOf:
 - required: [min_percentage]
 
 properties:
-  type: {enum: [percentage_match, PercentageMatchRuleType]}
+  type: {enum: [percentage_match, PercentageMatchRule]}
 ...

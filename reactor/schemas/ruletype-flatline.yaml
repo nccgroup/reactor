@@ -9,7 +9,7 @@ required: [threshold, timeframe]
 properties:
   type:
     type: string
-    enum: [flatline, FlatlineRuleType]
+    enum: [flatline, FlatlineRule]
   timeframe: {$ref: "common.yaml#/definitions/timeframe"}
   threshold: {type: integer}
   use_count_query: {type: boolean}

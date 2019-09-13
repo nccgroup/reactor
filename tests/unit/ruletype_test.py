@@ -5,21 +5,21 @@ import pytest
 from itertools import zip_longest
 
 from reactor.exceptions import ReactorException
-from reactor.ruletype import (
+from reactor.rule import (
     EventWindow,
-    AnyRuleType,
-    BlacklistRuleType,
-    WhitelistRuleType,
-    ChangeRuleType,
-    FrequencyRuleType,
-    FlatlineRuleType,
-    SpikeRuleType,
-    NewTermRuleType,
-    CardinalityRuleType,
-    BaseAggregationRuleType,
-    MetricAggregationRuleType,
-    SpikeMetricAggregationRuleType,
-    PercentageMatchRuleType,
+    AnyRule,
+    BlacklistRule,
+    WhitelistRule,
+    ChangeRule,
+    FrequencyRule,
+    FlatlineRule,
+    SpikeRule,
+    NewTermRule,
+    CardinalityRule,
+    BaseAggregationRule,
+    MetricAggregationRule,
+    SpikeMetricAggregationRule,
+    PercentageMatchRule,
 )
 from reactor.util import ts_to_dt, dt_to_ts
 
@@ -112,7 +112,7 @@ def test_event_window():
 
 def test_any():
     hits = gen_hits(1)
-    rule = AnyRuleType({})
+    rule = AnyRule('123', '', {})
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 1
     for hit, match in zip(hits, matches):
@@ -124,7 +124,7 @@ def test_blacklist():
     conf = {'blacklist': ['bad', 'really bad'],
             'compare_key': 'term',
             'timestamp_field': '@timestamp'}
-    rule = BlacklistRuleType(conf)
+    rule = BlacklistRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 2
     assert_matches_have(matches, [('term', 'bad'), ('term', 'really bad')])
@@ -136,7 +136,7 @@ def test_whitelist_ignore_null_true():
             'compare_key': 'term',
             'ignore_null': True,
             'timestamp_field': '@timestamp'}
-    rule = WhitelistRuleType(conf)
+    rule = WhitelistRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 2
     assert_matches_have(matches, [('term', 'bad'), ('term', 'really bad')])
@@ -148,7 +148,7 @@ def test_whitelist_ignore_null_false():
             'compare_key': 'term',
             'ignore_null': False,
             'timestamp_field': '@timestamp'}
-    rule = WhitelistRuleType(conf)
+    rule = WhitelistRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 3
     assert_matches_have(matches, [('term', 'bad'), ('term', 'really bad'), ('no_term', 'bad')])
@@ -165,7 +165,7 @@ def test_change():
             'query_key': 'username',
             'ignore_null': True,
             'timestamp_field': '@timestamp'}
-    rule = ChangeRuleType(conf)
+    rule = ChangeRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert_matches_have(matches, [('term', 'bad', 'second_term', 'no')])
 
@@ -181,7 +181,7 @@ def test_change_unhashable_qk():
             'query_key': 'username',
             'ignore_null': True,
             'timestamp_field': '@timestamp'}
-    rule = ChangeRuleType(conf)
+    rule = ChangeRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert_matches_have(matches, [('term', 'bad', 'second_term', 'no')])
 
@@ -197,7 +197,7 @@ def test_change_ignore_null_false():
             'query_key': 'username',
             'ignore_null': False,
             'timestamp_field': '@timestamp'}
-    rule = ChangeRuleType(conf)
+    rule = ChangeRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert_matches_have(matches, [('username', 'reactor'), ('term', 'bad', 'second_term', 'no')])
 
@@ -214,7 +214,7 @@ def test_change_with_timeframe():
             'ignore_null': True,
             'timeframe': datetime.timedelta(seconds=2),
             'timestamp_field': '@timestamp'}
-    rule = ChangeRuleType(conf)
+    rule = ChangeRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert_matches_have(matches, [('term', 'bad', 'second_term', 'no')])
 
@@ -231,7 +231,7 @@ def test_change_with_timeframe_no_matches():
             'ignore_null': True,
             'timeframe': datetime.timedelta(seconds=1),
             'timestamp_field': '@timestamp'}
-    rule = ChangeRuleType(conf)
+    rule = ChangeRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert matches == []
 
@@ -242,14 +242,14 @@ def test_frequency():
             'timeframe': datetime.timedelta(hours=1),
             'timestamp_field': 'blah',
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 1
 
     # garbage collection
-    assert 'all' in rule.occurrences
+    assert 'all' in rule.data.occurrences
     list(rule.garbage_collect(ts_to_dt('2019-07-27T12:00:00Z')))
-    assert rule.occurrences == {}
+    assert rule.data.occurrences == {}
 
 
 def test_frequency_with_qk():
@@ -259,14 +259,14 @@ def test_frequency_with_qk():
             'timeframe': datetime.timedelta(hours=1),
             'timestamp_field': 'blah',
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 1
 
     # garbage collection
-    assert 'reactor' in rule.occurrences
+    assert 'reactor' in rule.data.occurrences
     list(rule.garbage_collect(ts_to_dt('2019-07-27T12:00:00Z')))
-    assert rule.occurrences == {}
+    assert rule.data.occurrences == {}
 
 
 def test_frequency_with_no_matches():
@@ -276,7 +276,7 @@ def test_frequency_with_no_matches():
             'timeframe': datetime.timedelta(hours=1),
             'timestamp_field': 'blah',
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
     matches = list(rule.add_hits_data(hits))
     assert len(matches) == 0
 
@@ -287,7 +287,7 @@ def test_frequency_out_of_order():
             'timeframe': datetime.timedelta(hours=1),
             'timestamp_field': 'blah',
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
     matches = list(rule.add_hits_data(hits[:10]))
     assert len(matches) == 0
 
@@ -308,9 +308,9 @@ def test_frequency_out_of_order():
     assert len(matches) == 1
 
     # garbage collection
-    assert 'all' in rule.occurrences
+    assert 'all' in rule.data.occurrences
     list(rule.garbage_collect(ts_to_dt('2019-07-27T12:00:00Z')))
-    assert rule.occurrences == {}
+    assert rule.data.occurrences == {}
 
 
 def test_frequency_count():
@@ -318,7 +318,7 @@ def test_frequency_count():
             'timeframe': datetime.timedelta(hours=1),
             'use_count_query': True,
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
 
     matches = list(rule.add_count_data({gen_timestamp(0): 75}))
     assert len(matches) == 0
@@ -335,7 +335,7 @@ def test_frequency_count_not_immediate():
             'timeframe': datetime.timedelta(seconds=3),
             'use_count_query': True,
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
     matches = list(rule.add_count_data({gen_timestamp(0): 75}))
     assert len(matches) == 0
     matches = list(rule.add_count_data({gen_timestamp(1): 10}))
@@ -353,7 +353,7 @@ def test_frequency_terms():
             'timeframe': datetime.timedelta(hours=1),
             'query_key': 'username',
             'attach_related': False}
-    rule = FrequencyRuleType(conf)
+    rule = FrequencyRule('123', '', conf)
     terms = [
         {ts_to_dt('2019-07-26T12:01:00Z'): [{'key': 'userA', 'doc_count': 1},
                                             {'key': 'userB', 'doc_count': 5}]},
@@ -383,7 +383,7 @@ def test_flatline():
             'timestamp_field': '@timestamp',
             'attach_related': False,
             'forget_keys': False}
-    rule = FlatlineRuleType(conf)
+    rule = FlatlineRule('123', '', conf)
 
     # 1 hit should not cause an alert until after at least 30 seconds pass
     matches = list(rule.add_hits_data(gen_hits(1)))
@@ -424,7 +424,7 @@ def test_flatline_no_data():
             'timestamp_field': '@timestamp',
             'attach_related': False,
             'forget_keys': False}
-    rule = FlatlineRuleType(conf)
+    rule = FlatlineRule('123', '', conf)
 
     # Initial lack of data
     matches = list(rule.garbage_collect(gen_timestamp(0)))
@@ -443,7 +443,7 @@ def test_flatline_with_qk():
             'query_key': 'qk',
             'attach_related': False,
             'forget_keys': False}
-    rule = FlatlineRuleType(conf)
+    rule = FlatlineRule('123', '', conf)
 
     # Adding two separate query keys, the flatline rule should not trigger for any
     matches = list(rule.add_hits_data(gen_hits(1, qk='key1')))
@@ -477,7 +477,7 @@ def test_flatline_with_forget_qk():
             'query_key': 'qk',
             'attach_related': False,
             'forget_keys': True}
-    rule = FlatlineRuleType(conf)
+    rule = FlatlineRule('123', '', conf)
 
     # Adding two separate query keys, the flatline rule should not trigger for either
     matches = list(rule.add_hits_data(gen_hits(1, qk='key1')))
@@ -502,7 +502,7 @@ def test_flatline_count():
             'timestamp_field': '@timestamp',
             'attach_related': False,
             'forget_keys': False}
-    rule = FlatlineRuleType(conf)
+    rule = FlatlineRule('123', '', conf)
 
     matches = list(rule.add_count_data({gen_timestamp(0): 1}))
     matches.extend(rule.garbage_collect(gen_timestamp(10)))
@@ -524,7 +524,7 @@ def test_spike():
             'timeframe': datetime.timedelta(seconds=20),
             'use_count_query': False,
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Half rate of hits until
     matches = list(rule.add_hits_data(hits[:20:2]))
@@ -547,7 +547,7 @@ def test_spike_up():
             'timeframe': datetime.timedelta(seconds=20),
             'use_count_query': False,
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Half rate of hits until
     matches = list(rule.add_hits_data(hits[:20:2]))
@@ -570,7 +570,7 @@ def test_spike_down():
             'timeframe': datetime.timedelta(seconds=20),
             'use_count_query': False,
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Half rate of hits until
     matches = list(rule.add_hits_data(hits[:20:2]))
@@ -593,7 +593,7 @@ def test_spike_with_threshold_ref():
             'timeframe': datetime.timedelta(minutes=1),
             'use_count_query': False,
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Start with a
     matches = list(rule.add_hits_data(hits[:50:8]))
@@ -618,7 +618,7 @@ def test_spike_with_threshold_cur():
             'timeframe': datetime.timedelta(seconds=30),
             'use_count_query': False,
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Start with a
     matches = list(rule.add_hits_data(hits[:50:4]))
@@ -641,7 +641,7 @@ def test_spike_with_alert_on_new_data():
             'timestamp_field': '@timestamp',
             'query_key': 'username',
             'alert_on_new_data': True}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Fill up the baseline ref and cur windows
     matches = list(rule.add_hits_data(hits))
@@ -661,7 +661,7 @@ def test_spike_with_qk():
             'use_count_query': False,
             'timestamp_field': '@timestamp',
             'query_key': 'username'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Half rate of hits until
     matches = list(rule.add_hits_data(hits[:20:2]))
@@ -683,7 +683,7 @@ def test_spike_deep_key():
             'timeframe': datetime.timedelta(seconds=10),
             'timestamp_field': '@timestamp',
             'query_key': 'foo.bar.baz'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     list(rule.add_hits_data(gen_hits(1, foo={'bar': {'baz': 'qux'}})))
     assert 'qux' in rule.cur_windows
@@ -695,7 +695,7 @@ def test_spike_count():
             'spike_type': 'both',
             'timeframe': datetime.timedelta(seconds=10),
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Double rate of hits at 20 seconds
     matches = list(rule.add_count_data({gen_timestamp(0): 10}))
@@ -720,7 +720,7 @@ def test_spike_count_spike_up():
             'spike_type': 'up',
             'timeframe': datetime.timedelta(seconds=10),
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Double rate of hits at 20 seconds
     matches = list(rule.add_count_data({gen_timestamp(0): 10}))
@@ -745,7 +745,7 @@ def test_spike_count_spike_down():
             'spike_type': 'down',
             'timeframe': datetime.timedelta(seconds=10),
             'timestamp_field': '@timestamp'}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     # Double rate of hits at 20 seconds
     matches = list(rule.add_count_data({gen_timestamp(0): 10}))
@@ -773,7 +773,7 @@ def test_spike_terms():
             'use_count_query': False,
             'query_key': 'username',
             'use_terms_query': True}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     terms = [
         {ts_to_dt('2019-07-26T12:01:00Z'): [{'key': 'userA', 'doc_count': 10},
@@ -821,7 +821,7 @@ def test_spike_terms_with_alert_on_new_data():
             'query_key': 'username',
             'use_terms_query': True,
             'alert_on_new_data': True}
-    rule = SpikeRuleType(conf)
+    rule = SpikeRule('123', '', conf)
 
     terms = [
         {ts_to_dt('2019-07-26T12:01:00Z'): [{'key': 'userA', 'doc_count': 10},
@@ -865,7 +865,7 @@ def test_new_term():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
     # Mock the result of prepare
     rule.seen_values = {'a': {'key1', 'key2'}, 'b': {'key1', 'key2'}}
 
@@ -897,7 +897,7 @@ def test_new_term_with_alert_on_missing_field():
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts,
             'alert_on_missing_field': True}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
     # Mock the result of prepare
     rule.seen_values = {'a': {'key1', 'key2'}, 'b': {'key1', 'key2'}}
 
@@ -917,7 +917,7 @@ def test_new_term_with_nested_fields():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
     # Mock the result of prepare
     rule.seen_values = {'a': {'key1', 'key2'}, 'b.c': {'key1', 'key2'}}
 
@@ -948,7 +948,7 @@ def test_new_term_with_composite_fields():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
     # Mock the result of prepare
     rule.seen_values = {('a', 'b', 'c'): {('key1', 'key2', 'key3'), ('key1', 'key2', 'key4')},
                         ('d', 'e.f'): {('key1', 'key2', 'key3'), ('key1', 'key2', 'key4')}}
@@ -984,7 +984,7 @@ def test_new_term_with_composite_fields_and_alert_on_missing_field():
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts,
             'alert_on_missing_field': True}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
     # Mock the result of prepare
     rule.seen_values = {('a', 'b', 'c'): {('key1', 'key2', 'key3'), ('key1', 'key2', 'key4')},
                         ('d', 'e.f'): {('key1', 'key2', 'key3'), ('key1', 'key2', 'key4')}}
@@ -1002,7 +1002,7 @@ def test_new_term_prepare():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
 
     # Mock preparing the rule
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
@@ -1049,7 +1049,7 @@ def test_new_term_prepare_window_step_size():
             'window_step_size': {'days': 2},
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
 
     # Mock preparing the rule
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
@@ -1095,7 +1095,7 @@ def test_new_term_prepare_with_composite_fields():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
 
     # Mock preparing the rule
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
@@ -1156,7 +1156,7 @@ def test_new_term_terms():
             'index': 'reactor_logs',
             'ts_to_dt': ts_to_dt,
             'dt_to_ts': dt_to_ts}
-    rule = NewTermRuleType(conf)
+    rule = NewTermRule('123', '', conf)
     # Mock the result of prepare
     rule.seen_values = {'a': {'key1', 'key2'}}
 
@@ -1184,7 +1184,7 @@ def test_cardinality_max():
             'cardinality_field': 'username',
             'timeframe': datetime.timedelta(minutes=10),
             'timestamp_field': '@timestamp'}
-    rule = CardinalityRuleType(conf)
+    rule = CardinalityRule('123', '', conf)
 
     # Add 4 different user names
     matches = list(rule.add_hits_data(gen_hits(['userA', 'userB', 'userC', 'userD'], username=lambda x: x)))
@@ -1213,7 +1213,7 @@ def test_cardinality_max_with_qk():
             'query_key': 'username',
             'timeframe': datetime.timedelta(minutes=10),
             'timestamp_field': '@timestamp'}
-    rule = CardinalityRuleType(conf)
+    rule = CardinalityRule('123', '', conf)
 
     # Add 3 different user names, one value each
     matches = list(rule.add_hits_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x)))
@@ -1235,7 +1235,7 @@ def test_cardinality_min():
             'cardinality_field': 'username',
             'timeframe': datetime.timedelta(minutes=10),
             'timestamp_field': '@timestamp'}
-    rule = CardinalityRuleType(conf)
+    rule = CardinalityRule('123', '', conf)
 
     # Add 2 different user names, no alert because time hasn't elapsed
     matches = list(rule.add_hits_data(gen_hits(['userA', 'userB'], username=lambda x: x)))
@@ -1259,7 +1259,7 @@ def test_cardinality_min_with_qk():
             'query_key': 'username',
             'timeframe': datetime.timedelta(minutes=10),
             'timestamp_field': '@timestamp'}
-    rule = CardinalityRuleType(conf)
+    rule = CardinalityRule('123', '', conf)
 
     # Add 3 different user names, one value each, no alert because time hasn't elapsed
     matches = list(rule.add_hits_data(gen_hits(['userA', 'userB', 'userC'], username=lambda x: x, foo=lambda x: 'foo' + x)))
@@ -1281,7 +1281,7 @@ def test_cardinality_nested_cardinality_field():
             'cardinality_field': 'd.ip',
             'timeframe': datetime.timedelta(minutes=10),
             'timestamp_field': '@timestamp'}
-    rule = CardinalityRuleType(conf)
+    rule = CardinalityRule('123', '', conf)
 
     # Add 4 different IPs
     ips = ['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4']
@@ -1319,12 +1319,12 @@ def test_base_aggregation_constructor_bucket_interval():
              ({'days': 2}, '2d'), ({'weeks': 2}, '2w')]
     for bucket_interval, bucket_interval_period in pairs:
         conf['bucket_interval'] = datetime.timedelta(**bucket_interval)
-        rule = BaseAggregationRuleType(conf)
-        assert rule.conf['bucket_interval_period'] == bucket_interval_period
+        rule = BaseAggregationRule('123', '', conf)
+        assert rule.conf('bucket_interval_period') == bucket_interval_period
 
     with pytest.raises(ReactorException):
         conf['bucket_interval'] = datetime.timedelta(milliseconds=1)
-        BaseAggregationRuleType(conf)
+        BaseAggregationRule('123', '', conf)
 
 
 def test_base_aggregation_constructor_buffer_time():
@@ -1335,7 +1335,7 @@ def test_base_aggregation_constructor_buffer_time():
     # `buffer_time` evenly divisible by bucket period
     with pytest.raises(ReactorException):
         conf['bucket_interval'] = datetime.timedelta(seconds=13)
-        BaseAggregationRuleType(conf)
+        BaseAggregationRule('123', '', conf)
 
 
 def test_base_aggregation_constructor_run_every():
@@ -1346,20 +1346,20 @@ def test_base_aggregation_constructor_run_every():
             'run_every': datetime.timedelta(minutes=2)}
 
     # `run_every` evenly divisible by `bucket_interval`
-    BaseAggregationRuleType(conf)
+    BaseAggregationRule('123', '', conf)
 
     with pytest.raises(ReactorException):
         conf['bucket_interval'] = datetime.timedelta(seconds=13)
-        BaseAggregationRuleType(conf)
+        BaseAggregationRule('123', '', conf)
 
 
 def test_base_aggregation_payload_not_wrapped():
-    with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=[]) as mock_check_matches:
+    with mock.patch.object(BaseAggregationRule, 'check_for_matches', return_value=[]) as mock_check_matches:
         conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
-        rule = BaseAggregationRuleType(conf)
+        rule = BaseAggregationRule('123', '', conf)
         timestamp = gen_timestamp(60)
 
         # Payload not wrapped
@@ -1368,12 +1368,12 @@ def test_base_aggregation_payload_not_wrapped():
 
 
 def test_base_aggregation_payload_wrapped_by_date_histogram():
-    with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=[]) as mock_check_matches:
+    with mock.patch.object(BaseAggregationRule, 'check_for_matches', return_value=[]) as mock_check_matches:
         conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
-        rule = BaseAggregationRuleType(conf)
+        rule = BaseAggregationRule('123', '', conf)
         timestamp = gen_timestamp(60)
         interval_agg = gen_bucket_aggregation('interval_aggs', [{'key_as_string': dt_to_ts(gen_timestamp())}])
 
@@ -1384,12 +1384,12 @@ def test_base_aggregation_payload_wrapped_by_date_histogram():
 
 
 def test_base_aggregation_payload_wrapped_by_terms():
-    with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=[]) as mock_check_matches:
+    with mock.patch.object(BaseAggregationRule, 'check_for_matches', return_value=[]) as mock_check_matches:
         conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
-        rule = BaseAggregationRuleType(conf)
+        rule = BaseAggregationRule('123', '', conf)
         timestamp = gen_timestamp(60)
 
         # Payload wrapped by terms
@@ -1399,12 +1399,12 @@ def test_base_aggregation_payload_wrapped_by_terms():
 
 
 def test_base_aggregation_payload_wrapped_by_terms_and_date_histogram():
-    with mock.patch.object(BaseAggregationRuleType, 'check_for_matches', return_value=[]) as mock_check_matches:
+    with mock.patch.object(BaseAggregationRule, 'check_for_matches', return_value=[]) as mock_check_matches:
         conf = {'bucket_interval': datetime.timedelta(seconds=10),
                 'buffer_time': datetime.timedelta(minutes=5),
                 'timestamp_field': '@timestamp'}
 
-        rule = BaseAggregationRuleType(conf)
+        rule = BaseAggregationRule('123', '', conf)
         ts = gen_timestamp(60)
         interval_agg = gen_bucket_aggregation('interval_aggs', [{'key_as_string': dt_to_ts(gen_timestamp())}])
         interval_aggs = interval_agg['interval_aggs']
@@ -1424,17 +1424,17 @@ def test_metric_aggregation_constructor_threshold():
 
     # No thresholds in conf
     with pytest.raises(ReactorException):
-        MetricAggregationRuleType(conf)
+        MetricAggregationRule('123', '', conf)
 
     # `max_threshold` only
     conf.pop('min_threshold', None)
     conf['max_threshold'] = 0.8
-    MetricAggregationRuleType(conf)
+    MetricAggregationRule('123', '', conf)
 
     # `min_threshold` only
     conf['min_threshold'] = 0.1
     conf.pop('max_threshold', None)
-    MetricAggregationRuleType(conf)
+    MetricAggregationRule('123', '', conf)
 
 
 def test_metric_aggregation_constructor_metric_agg_type():
@@ -1446,13 +1446,13 @@ def test_metric_aggregation_constructor_metric_agg_type():
             'timestamp_field': '@timestamp'}
 
     # Valid aggregation types
-    for agg_type in BaseAggregationRuleType.allowed_aggregations:
+    for agg_type in BaseAggregationRule.allowed_aggregations:
         conf['metric_agg_type'] = agg_type
-        MetricAggregationRuleType(conf)
+        MetricAggregationRule('123', '', conf)
 
     with pytest.raises(ReactorException):
         conf['metric_agg_type'] = 'invalid-agg-type'
-        MetricAggregationRuleType(conf)
+        MetricAggregationRule('123', '', conf)
 
 
 def test_metric_aggregation():
@@ -1462,9 +1462,9 @@ def test_metric_aggregation():
             'metric_agg_type': 'avg',
             'metric_agg_key': 'cpu_pct',
             'timestamp_field': '@timestamp'}
-    rule = MetricAggregationRuleType(conf)
+    rule = MetricAggregationRule('123', '', conf)
 
-    assert rule.conf['aggregation_query_element'] == {'metric_cpu_pct_avg': {'avg': {'field': 'cpu_pct'}}}
+    assert rule.conf('aggregation_query_element') == {'metric_cpu_pct_avg': {'avg': {'field': 'cpu_pct'}}}
 
     assert rule.crossed_thresholds(None) is False
     assert rule.crossed_thresholds(0.09) is True
@@ -1490,7 +1490,7 @@ def test_metric_aggregation_with_qk():
             'metric_agg_key': 'cpu_pct',
             'query_key': 'qk',
             'timestamp_field': '@timestamp'}
-    rule = MetricAggregationRuleType(conf)
+    rule = MetricAggregationRule('123', '', conf)
 
     matches = list(rule.check_for_matches(gen_timestamp(), 'qk_val', {'metric_cpu_pct_avg': {'value': 0.95}}))
     assert len(matches) == 1
@@ -1506,7 +1506,7 @@ def test_metric_aggregation_with_complex_qk():
             'compound_query_key': ['qk', 'sub_qk'],
             'query_key': 'qk,sub_qk',
             'timestamp_field': '@timestamp'}
-    rule = MetricAggregationRuleType(conf)
+    rule = MetricAggregationRule('123', '', conf)
 
     query = gen_bucket_aggregation('bucket_aggs', [{'metric_cpu_pct_avg': {'value': 0.91}, 'key': 'sub_qk_val1'},
                                                    {'metric_cpu_pct_avg': {'value': 0.95}, 'key': 'sub_qk_val2'},
@@ -1526,7 +1526,7 @@ def test_metric_aggregation_with_complex_qk():
 @pytest.mark.skip(reason='Test not yet implemented')
 def test_spike_metric_aggregation():
     conf = {}
-    rule = SpikeMetricAggregationRuleType(conf)
+    rule = SpikeMetricAggregationRule('123', '', conf)
 
 
 def test_percentage_match_constructor_percentage():
@@ -1536,17 +1536,17 @@ def test_percentage_match_constructor_percentage():
 
     # No percentages in conf
     with pytest.raises(ReactorException):
-        PercentageMatchRuleType(conf)
+        PercentageMatchRule('123', '', conf)
 
     # `max_percentage` only
     conf.pop('min_percentage', None)
     conf['max_percentage'] = 75
-    PercentageMatchRuleType(conf)
+    PercentageMatchRule('123', '', conf)
 
     # `min_percentage` only
     conf['min_percentage'] = 25
     conf.pop('max_percentage', None)
-    PercentageMatchRuleType(conf)
+    PercentageMatchRule('123', '', conf)
 
 
 def test_percentage_match():
@@ -1555,10 +1555,10 @@ def test_percentage_match():
             'min_percentage': 25,
             'max_percentage': 75,
             'timestamp_field': '@timestamp'}
-    rule = PercentageMatchRuleType(conf)
+    rule = PercentageMatchRule('123', '', conf)
 
     # Check `aggregation_query_element` is correct
-    assert rule.conf['aggregation_query_element'] == {
+    assert rule.conf('aggregation_query_element') == {
         'percentage_match_aggs': {'filters': {'other_bucket': True,
                                               'filters': {'match_bucket': {'bool': {'must': {'term': 'term_val'}}}}}}
     }
@@ -1590,7 +1590,7 @@ def test_percentage_match_with_qk():
             'max_percentage': 75,
             'query_key': 'qk',
             'timestamp_field': '@timestamp'}
-    rule = PercentageMatchRuleType(conf)
+    rule = PercentageMatchRule('123', '', conf)
 
     matches = list(rule.check_for_matches(gen_timestamp(), 'qk_val', gen_percentage_match_agg(76.666666667, 24)))
     assert len(matches) == 1

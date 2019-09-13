@@ -1,0 +1,28 @@
+---
+is_enabled: true
+uuid: "frequency"
+name: "Frequency rule type"
+description: A "frequency" rule type.
+index: reactor_logs
+use_local_time: false
+type: frequency
+num_events: 5
+timeframe:
+  minutes: 10
+alerters:
+  debug: {}
+buffer_time:
+  hours: 24
+realert:
+  minutes: 1
+
+use_count_query: true
+doc_type: doc
+
+filter:
+- bool:
+    should:
+    - term:
+        colour: yellow
+    - term:
+        colour: green
