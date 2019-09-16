@@ -346,7 +346,7 @@ class Core(object):
 
     def test_rule(self, rule: Rule, end_time, start_time=None):
         try:
-            counters = self.run_rule(rule, end_time, start_time)
+            rule.data = self.run_rule(rule, end_time, start_time)
         except ReactorException as e:
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name})
         except Exception as e:
@@ -357,11 +357,11 @@ class Core(object):
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(end_time, rule.conf('use_local_time')),
                                 rule.name,
-                                counters['cumulative_hits'],
-                                counters['num_duplicates'],
-                                counters['num_matches'],
-                                counters['alerts_sent'],
-                                counters['alerts_silenced'])
+                                rule.data.cumulative_hits,
+                                rule.data.num_duplicates,
+                                rule.data.num_matches,
+                                rule.data.alerts_sent,
+                                rule.data.alerts_silenced)
 
     def start(self):
         """ Periodically update rules and schedule to run. """
