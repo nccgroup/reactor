@@ -28,6 +28,12 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         metavar='my_config.yaml',
                         default='config.yaml',
                         help='Global config file')
+    config.add_argument('-l', '--log-level',
+                        action='store',
+                        dest='log_level',
+                        default=None,
+                        choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'],
+                        help='Set the logging level')
 
     patience = argparse.ArgumentParser(add_help=False)
     patience.add_argument('--patience',
@@ -304,6 +310,9 @@ def main(args):
         parser.print_help()
         return 0
 
+    if args['log_level']:
+        reactor_logger.setLevel(args['log_level'])
+
     try:
         config = parse_config(args['config'])
 
@@ -334,7 +343,9 @@ def main(args):
 
         # Run Reactor
         else:
-            exit_code = Core(config, args).start()
+            core = Core(config, args)
+            signal.signal(signal.SIGINT, core.terminate)
+            exit_code = core.start()
 
     except Exception as e:
         print('Raised exception %s: %s' % (type(e), e))

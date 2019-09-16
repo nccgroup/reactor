@@ -4,13 +4,16 @@ import logging
 import multiprocessing
 import multiprocessing.managers
 import secrets
+import sys
 import threading
 import time
 import traceback
 from typing import Optional
 
+import apscheduler.events
 import apscheduler.schedulers.background
 import apscheduler.triggers.interval
+import apscheduler.executors.pool
 import croniter
 import dateutil.tz
 import elasticsearch.helpers
@@ -28,12 +31,9 @@ from reactor.util import (
 
 _authkey = secrets.token_urlsafe(32)
 
-_EXECUTION_ERROR = 0b1
-_ALREADY_RUN = 0b10
-
 
 class Core(object):
-
+    MAX_TERMINATE_CALLED = 3
     thread_data = threading.local()
 
     def __init__(self, conf: dict, args: dict):
@@ -64,9 +64,11 @@ class Core(object):
 
         self.start_time = args.get('start', dt_now())
         self._es_version = None
-        self.running = False
         self.scheduler = apscheduler.schedulers.background.BackgroundScheduler()
-        self.pool = None  # type: multiprocessing.Pool
+        self.terminate_called = 0
+        self.parent_pid = 0
+
+        self._configure_schedule()
 
     def __getstate__(self):
         f = copy.copy(self.__dict__)
@@ -82,6 +84,34 @@ class Core(object):
     @property
     def es_version(self):
         return self.es_client.es_version
+
+    @property
+    def running(self):
+        return self.scheduler.running
+
+    def _configure_schedule(self):
+        jobstores = {
+            'internal': {'type': 'memory'},
+            'default': {'type': 'memory'},
+        }
+        executors = {
+            'default': {'type': 'threadpool', 'max_workers': 2},
+            'processpool': apscheduler.executors.pool.ProcessPoolExecutor(
+                max_workers=max(1, multiprocessing.cpu_count() - 1)),
+        }
+        job_defaults = {
+            'coalesce': True,
+            'max_instances': 1,
+        }
+        self.scheduler.configure(jobstores=jobstores,
+                                 executors=executors,
+                                 job_defaults=job_defaults)
+        self.scheduler.add_listener(self.handle_job_complete,
+                                    apscheduler.events.EVENT_JOB_ERROR |
+                                    apscheduler.events.EVENT_JOB_EXECUTED |
+                                    apscheduler.events.EVENT_JOB_MAX_INSTANCES)
+        self.scheduler.add_listener(self.listen_scheduler_max_instances,
+                                    apscheduler.events.EVENT_JOB_MAX_INSTANCES)
 
     def get_writeback_index(self, doc_type: str, rule=None, match_body=None):
         """ In ElasticSearch >= 6.x, multiple doc types in a single index. """
@@ -365,40 +395,62 @@ class Core(object):
 
     def start(self):
         """ Periodically update rules and schedule to run. """
+        if self.running:
+            raise ReactorException('Core already running')
+
         # Ensure ElasticSearch is responsive
         if not self.wait_until_responsive(timeout=self.args['timeout']):
             return 1
+
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
+        reactor_logger.info('Starting up')
+        self.parent_pid = multiprocessing.current_process().pid
 
-        with multiprocessing.Pool(processes=max(1, multiprocessing.cpu_count()-1)) as pool:
-            self.pool = pool
-            reactor_logger.info('Starting up')
-            self.running = True
-            self.scheduler.add_job(self.handle_pending_alerts, 'interval',
-                                   seconds=self.conf['resend'].total_seconds(),
-                                   id='_internal_handle_pending_alerts')
-            self.scheduler.add_job(self.handle_config_changes, 'interval',
-                                   seconds=(self.args['reload'] or self.conf['reload']).total_seconds(),
-                                   id='_internal_handle_config_changes',
-                                   next_run_time=datetime.datetime.now())
-            self.scheduler.start()
-            while self.running:
-                # If an end time was specified and it has elapsed
-                if self.args['end'] and self.args['end'] < dt_now():
-                    # If the rule have been loaded and every run has been run once
-                    if self.loader.loaded and all([r.data.has_run_once for r in self.loader]):
-                        reactor_logger.info('Reached end time, shutting down reactor')
-                        self.running = False
-                # Briefly sleep
-                time.sleep(0.1)
+        # Add internal jobs to the scheduler
+        self.scheduler.add_job(self.handle_pending_alerts, 'interval',
+                               seconds=self.conf['resend'].total_seconds(),
+                               id='_internal_handle_pending_alerts',
+                               jobstore='internal',
+                               executor='default')
+        self.scheduler.add_job(self.handle_config_changes, 'interval',
+                               seconds=(self.args['reload'] or self.conf['reload']).total_seconds(),
+                               id='_internal_handle_config_changes',
+                               next_run_time=datetime.datetime.now(),
+                               jobstore='internal',
+                               executor='default')
+        self.scheduler.start()
 
-            self.pool.close()
-            self.pool.join()
+        while self.running:
+            # If an end time was specified and it has elapsed
+            if self.args['end'] and self.args['end'] < dt_now():
+                # If the rule have been loaded and every run has been run once
+                if self.loader.loaded and all([r.data.has_run_once for r in self.loader]):
+                    reactor_logger.info('Reached end time, shutting down reactor')
+                    self.scheduler.shutdown()
+            # Briefly sleep
+            time.sleep(0.1)
+
+        reactor_logger.info('Goodbye')
         return 0
+
+    def terminate(self, signal_num, frame):
+        """ Try safe ``stop`` for up to ``self.MAX_TERMINATE_CALLED`` times. """
+        self.terminate_called += 1
+        if self.parent_pid == multiprocessing.current_process().pid:
+            reactor_logger.info('Attempting normal shutdown')
+            self.stop()
+
+        if self.terminate_called >= self.MAX_TERMINATE_CALLED:
+            reactor_logger.critical('Terminating reactor')
+            sys.exit(signal_num)
 
     def stop(self):
         """ Stop a running Reactor. """
-        self.running = False
+        if self.running:
+            reactor_logger.info('Waiting for running to complete')
+            self.scheduler.remove_all_jobs('internal')
+            self.scheduler.remove_all_jobs('default')
+            self.scheduler.shutdown()
 
     def wait_until_responsive(self, timeout: datetime.timedelta):
         """ Wait until ElasticSearch becomes responsive (or too much time passes). """
@@ -426,11 +478,17 @@ class Core(object):
         return False
 
     def handle_pending_alerts(self):
+        if not self.running:
+            return
+
         alerts_sent = self.send_pending_alerts()
         if alerts_sent > 0:
             reactor_logger.info('Sent %s pending alerts at %s', alerts_sent, pretty_ts(dt_now()))
 
     def handle_config_changes(self):
+        if not self.running:
+            return
+
         # If already loaded and pinned
         if self.loader.loaded and self.args['pin_rules']:
             return
@@ -447,12 +505,16 @@ class Core(object):
         except ReactorException as e:
             reactor_logger.error(str(e))
             return
+
+        # Remove removed rules from the scheduler
         for rule_locator in existing - replaced:
-            # Remove removed rules from the scheduler
             self.scheduler.remove_job(job_id=rule_locator)
 
-        # Add the rule to the scheduler
+        # Add/modify rules in the scheduler
         for rule_locator in replaced:
+            if not self.running:
+                return
+
             rule = self.loader[rule_locator]
             rule.data.initial_start_time = self.start_time if not self.running else rule.data.initial_start_time
 
@@ -464,14 +526,15 @@ class Core(object):
                 self.scheduler.add_job(self.handle_rule_execution,
                                        args=[rule],
                                        id=rule.locator,
+                                       jobstore='default',
+                                       executor='processpool',
                                        name=rule.name,
-                                       coalesce=True,
-                                       max_instances=1,
                                        next_run_time=datetime.datetime.now(),
                                        trigger=trigger)
             else:
                 # Add the rule to the scheduler
                 self.scheduler.modify_job(job_id=rule.locator,
+                                          jobstore='default',
                                           args=[rule],
                                           name=rule.name,
                                           trigger=trigger)
@@ -489,7 +552,7 @@ class Core(object):
 
         # Disable the rule if it has run at least once, an end time was specified, and the end time has elapsed
         if rule.data.has_run_once and self.args['end'] and self.args['end'] < dt_now():
-            return _ALREADY_RUN, rule.data
+            return rule.data
 
         # Apply rules based on execution time limits
         if rule.conf('limit_execution'):
@@ -506,14 +569,12 @@ class Core(object):
                     self.reset_rule_schedule(rule)
 
         # Run the rule
-        return_code = 0
         try:
-            rule.data = self.pool.apply(self.run_rule, args=(rule, end_time, rule.data.initial_start_time))
+            rule.data = self.run_rule(rule, end_time, rule.data.initial_start_time)
         except ReactorException as e:
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name})
-        except Exception as e:
-            self.handle_uncaught_exception(e, rule)
-            return_code |= _EXECUTION_ERROR
+        # except Exception as e:
+        #     self.handle_uncaught_exception(e, rule)
         else:
             # old_start_time = pretty_ts(rule.data.original_start_time, rule.conf('use_local_time'))
             old_start_time = pretty_ts(rule.data.start_time, rule.conf('use_local_time'))
@@ -538,14 +599,14 @@ class Core(object):
                                        rule.run_every,
                                        datetime.timedelta(seconds=rule.data.time_taken))
 
-        rule.data.initial_start_time = None
-        self.garbage_collect(rule)
-        self.reset_rule_schedule(rule)
+        # rule.data.initial_start_time = None
+        # self.garbage_collect(rule)
+        # self.reset_rule_schedule(rule)
 
         # Mark the rule has having been run at least once
         rule.data.has_run_once = True
         rule.data.end_time = end_time
-        return return_code, rule.data
+        return rule.data
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run
@@ -1041,16 +1102,42 @@ class Core(object):
 
     def handle_uncaught_exception(self, exception, rule):
         """ Disables a rule and sends a notification. """
-        reactor_logger.error(traceback.format_exc())
+        # reactor_logger.error(traceback.format_exc())
         self.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
 
         if rule.conf('disable_rule_on_error'):
             self.loader.disable(rule.locator)
-            self.scheduler.remove_job(job_id=rule.hash)
-            reactor_logger.info('Rule %s disabled', rule.name)
+            if self.running and self.scheduler.get_job(job_id=rule.locator):
+                self.scheduler.remove_job(job_id=rule.locator)
+            reactor_logger.info('Rule "%s" disabled', rule.name)
         # TODO: add notification
         # if self.notify_email:
         #     self.send_notification()
+
+    def handle_job_complete(self, event: apscheduler.events.JobExecutionEvent):
+        if event.jobstore != 'default':
+            return
+
+        # Get the rule
+        rule = self.loader[event.job_id]
+
+        if event.code == apscheduler.events.EVENT_JOB_ERROR:
+            self.handle_uncaught_exception(event.exception, rule)
+
+        elif event.code == apscheduler.events.EVENT_JOB_EXECUTED:
+            rule.data = event.retval
+
+        rule.data.initial_start_time = None
+        self.garbage_collect(rule)
+        self.reset_rule_schedule(rule)
+
+    def listen_scheduler_max_instances(self, event):
+        """ Log max instances for rule has been breached. """
+        if event.jobstore != 'default':
+            return
+
+        rule = self.loader[event.job_id]
+        reactor_logger.warning('Execution time for "%s" longer than run_every (%s)', rule.name, rule.run_every)
 
     def get_top_counts(self, rule: Rule, start_time, end_time, keys, number=None, qk=None):
         """
