@@ -1,7 +1,7 @@
 ---
 is_enabled: true
-uuid: "frequency"
-name: "Frequency rule type"
+uuid: "frequency-count_query"
+name: "Frequency counts rule type"
 description: A "frequency" rule type.
 index: reactor_logs
 use_local_time: false
