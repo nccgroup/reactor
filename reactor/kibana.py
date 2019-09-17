@@ -3,7 +3,7 @@ import datetime
 import elasticsearch
 import json
 import os.path
-import urllib
+import urllib.parse
 from reactor.util import dt_to_ts, ts_to_dt, dots_get, elasticsearch_client
 from reactor.exceptions import ReactorException
 
@@ -98,7 +98,6 @@ def upload_dashboard(db, rule, match):
 
 def get_dashboard(rule, db_name):
     """ Download dashboard which matches use_kibana_dashboard from Elasticsearch. """
-    es = elasticsearch_client(rule.conf['elasticsearch'])
     if not db_name:
         raise ReactorException("use_kibana_dashboard undefined")
     query = {'query': {'term': {'_id': db_name}}}
@@ -428,5 +427,5 @@ def filters_from_dashboard(db):
 def kibana4_dashboard_link(dashboard, start_time, end_time):
     dashboard = os.path.expandvars(dashboard)
     time_settings = kibana4_time_temp % (start_time, end_time)
-    time_settings = urllib.quote(time_settings)
+    time_settings = urllib.parse.quote(time_settings)
     return "%s?_g=%s" % (dashboard, time_settings)

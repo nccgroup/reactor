@@ -44,9 +44,9 @@ loader.config.rules_folder: rules
 #    my_loader: package.module.MyRuleLoader
 #  alerter:
 #    my_alerter: package.module.MyAlerter
-#  ruletype:
-#    my_rule_type: package.module.MyRuleType
-#    frequency: package.module.MyFrequencyRuleType
+#  rule:
+#    my_rule: package.module.MyRule
+#    frequency: package.module.MyFrequencyRule
 #  enhancement:
 #    my_enhancement: package.module.MyEnhancement
 

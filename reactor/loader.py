@@ -15,124 +15,136 @@ from reactor.util import (
     import_class
 )
 from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
-from reactor.ruletype import RuleType
 from reactor.rule import Rule
 
 
 class RuleLoader(object):
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/ruletype.yaml'))
+    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype.yaml', __file__)
     conf_schema = None
 
-    def __init__(self, conf: dict, base_conf: dict, mappings: dict):
+    def __init__(self, conf: dict, rule_defaults: dict, mappings: dict):
         """
-        :param conf: Loader configuration
-        :param base_conf: Base rule configuration
-        :param mappings: Lookup dictionary for alerter and ruletype classes
+        :param conf: Configuration for the loader
+        :param rule_defaults: Default values for every rule
+        :param mappings: Lookup dictionary of alerters and ruletype classes
         """
         self.conf = conf
-        self.base_config = copy.deepcopy(base_conf)
+        self.rule_defaults = rule_defaults
         self.mappings = mappings
+
         self.rule_imports = {}
         self.rules = {}  # type: typing.Dict[str, Rule]
-        self.loaded = False
+        self._loaded = False
+        self._disabled = {}
 
     def __iter__(self) -> Iterator[Rule]:
-        return iter(filter(lambda r: not r.disabled, self.rules.values()))
+        return iter(self.rules.values())
 
     def __contains__(self, item):
         return item in self.rules
 
-    def __len__(self):
-        return len(self.rules)
+    def __getitem__(self, item):
+        return self.rules[item]
 
-    def disable(self, rule_id):
+    def keys(self):
+        return self.rules.keys()
+
+    @property
+    def loaded(self) -> bool:
+        """ Whether the rules have been loaded at least once. """
+        return self._loaded
+
+    def disable(self, locator: str) -> None:
         """ Disable the rule until it is next updated. """
-        self.rules[rule_id].disabled = True
+        self._disabled[locator] = self.get_hash(locator)
 
-    def load(self, args: dict = None) -> List[tuple]:
+    def enabled(self, locator: str) -> None:
+        """ Enable the rule. """
+        self._disabled.pop(locator, None)
+
+    def load(self, args: dict = None) -> list:
         """
-        Discover and load all the rules as defined in the conf and args.
-        :return: List of hashes that have been removed
+        Discover and load all the rules as defined in the configuration and arguments.
+        :return: Tuple of additions, modifications, and removals (list[str], list[str], list[str])
         """
         names = []
         use_rules = args.get('rules', [])
         use_rules = use_rules if isinstance(use_rules, list) else [use_rules]
 
-        removed = []
-
         # Load each rule configuration
         rules = {}
-        for rule_locator in self.discover(use_rules):
+        for locator in self.discover(use_rules):
+            # If this rule has been disabled and the hash has not changed, skip it
+            if locator in self._disabled and self.get_hash(locator) == self._disabled[locator]:
+                continue
+
             # If we have already loaded this rule and it hasn't changed, use the existing
-            existing_rule = self.rules.get(rule_locator)
-            if existing_rule and existing_rule.hash == self.get_hash(rule_locator):
-                rules[rule_locator] = existing_rule
-                names.append(existing_rule.name)
+            if self.rules.get(locator) and self.rules[locator].hash == self.get_hash(locator):
+                rules[locator] = self.rules[locator]
                 continue
 
             # Load the rule
             try:
-                rule = self.load_configuration(rule_locator)
-                rule.hash = self.get_hash(rule_locator)
+                rule = self.load_configuration(locator)
+                rule.hash = self.get_hash(locator)
                 # By setting `is_enabled: False` in rule YAML, a rule is easily disabled
                 if not rule.enabled:
                     continue
                 if rule.name in names:
                     raise ReactorException('Duplicate rule named %s' % rule.name)
             except ReactorException as e:
-                raise ReactorException('Error loading rule %s: %s' % (rule_locator, e))
+                raise ReactorException('Error loading rule: %s: %s' % (locator, e))
 
             # Does this rule already exist, copy over some properties
-            if existing_rule:
-                rule.agg_alerts = existing_rule.agg_alerts
-                rule.current_aggregate_id = existing_rule.current_aggregate_id
-                rule.processed_hits = existing_rule.processed_hits
-                rule.minimum_start_time = existing_rule.minimum_start_time
-                rule.has_run_once = existing_rule.has_run_once
+            if self.rules.get(locator):
+                rule.data = self.rules.get(locator).data
 
-                # Mark the
-                removed.append((existing_rule.hash, existing_rule.uuid))
-
-            rules[rule_locator] = rule
+            rules[locator] = rule
             names.append(rule.name)
 
         # Mark that we have loaded at least once
-        self.loaded = True
-
-        # Detected rules that have been removed/modified
-        removed.extend([(self.rules[locator].hash, self.rules[locator].uuid) for locator in self.rules.keys() - rules.keys()])
+        self._loaded = True
         self.rules = rules
-        return removed
+
+        return list(self.rules.keys())
 
     def discover(self, use_rules: list = None) -> List[str]:
         """ Discover all rules and return a list of rule locators. """
         raise NotImplementedError()
 
-    def get_hash(self, rule_locator: str) -> str:
+    def get_hash(self, locator: str) -> str:
         """ Given a rule locator return the hash. Used to detect configuration changes. """
         raise NotImplementedError()
 
-    def load_configuration(self, rule_id: str) -> Rule:
+    def load_configuration(self, locator: str) -> Rule:
         # Load configuration and validate
-        conf = self.load_yaml(rule_id)
-        rule_type = self.validate(conf)
+        try:
+            conf = self.load_yaml(locator)
+            rule = self.validate(locator, conf)
 
-        # Create the rule object and populate
-        rule = Rule(rule_id, conf, rule_type)
-        self.load_options(rule)
-        self.load_modules(rule, self.mappings)
-        return rule
+            # Create the rule object and populate
+            self.load_options(rule)
+            self.load_modules(rule, self.mappings)
 
-    def load_yaml(self, rule_id: str):
+        except ReactorException as e:
+            self.disable(locator)
+            raise e
+
+        else:
+            # Clear the invalid cache
+            self.enabled(locator)
+
+            return rule
+
+    def load_yaml(self, locator: str):
         rule = {
-            'rule_id': rule_id,
+            'rule_id': locator,
             'running': False,
         }
-        # Clear the dependencies for rule_id
-        self.rule_imports.pop(rule_id, None)
-        while rule_id is not None:
-            loaded = self.get_yaml(rule_id)
+        # Clear the dependencies for locator
+        self.rule_imports.pop(locator, None)
+        while locator is not None:
+            loaded = self.get_yaml(locator)
 
             # Special case for merging filters - if both specify a filter merge (AND) them
             if 'filter' in rule and 'filter' in loaded:
@@ -143,15 +155,15 @@ class RuleLoader(object):
             rule = loaded
 
             # Check for import dependencies
-            rule_id = self.resolve_import(rule)
+            locator = self.resolve_import(rule)
 
         # Copy defaults in from the base config
-        for key, val in self.base_config.items():
+        for key, val in self.rule_defaults.items():
             rule.setdefault(key, val)
 
         return rule
 
-    def get_yaml(self, rule_id: str) -> dict:
+    def get_yaml(self, locator: str) -> dict:
         """ Get and parse the YAML of the specified rule. """
         raise NotImplementedError()
 
@@ -171,17 +183,17 @@ class RuleLoader(object):
         del (rule['import'])
         return import_id
 
-    def validate(self, conf: dict) -> RuleType:
+    def validate(self, locator: str, conf: dict) -> Rule:
         # Validate the base rule type
         try:
             self.rule_schema.validate(conf)
         except jsonschema.ValidationError as e:
             raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
 
-        # Convert rule type into RuleType object
-        rule_type = import_class(conf['type'], self.mappings['ruletype'], reactor.ruletype)
-        if not issubclass(rule_type, reactor.ruletype.RuleType):
-            raise ConfigException('Rule module %s is not a subclass of RuleType' % rule_type)
+        # Convert rule type into Rule object
+        rule_type = import_class(conf['type'], self.mappings['rule'], reactor.rule)
+        if not issubclass(rule_type, reactor.rule.Rule):
+            raise ConfigException('Rule module %s is not a subclass of Rule' % rule_type)
 
         # Validate the specific rule type
         try:
@@ -189,9 +201,9 @@ class RuleLoader(object):
         except jsonschema.ValidationError as e:
             raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
 
-        # Instantiate RuleType
+        # Instantiate Rule
         try:
-            return rule_type(conf)
+            return rule_type(locator, self.get_hash(locator), conf)
         except (KeyError, ReactorException) as e:
             raise ReactorException('Error initialising rule %s: %s' % (conf['name'], e))
 
@@ -258,7 +270,7 @@ class RuleLoader(object):
             if not issubclass(enhancement_class, reactor.enhancement.MatchEnhancement):
                 raise ConfigException('Enhancement module %s not a subclass of MatchEnhancement' % enhancement_name)
             match_enhancements.append(enhancement_class(rule))
-        rule.type.match_enhancements = match_enhancements
+        rule.match_enhancements = match_enhancements
 
         # Load alert enhancements
         alert_enhancements = []
@@ -267,7 +279,7 @@ class RuleLoader(object):
             if not issubclass(enhancement_class, reactor.enhancement.AlertEnhancement):
                 raise ConfigException('Enhancement module %s not a subclass of AlertEnhancement' % enhancement_name)
             alert_enhancements.append(enhancement_class(rule))
-        rule.type.alert_enhancements = alert_enhancements
+        rule.alert_enhancements = alert_enhancements
 
         # Load alerters
         alerters = []
@@ -277,12 +289,11 @@ class RuleLoader(object):
             if not issubclass(alerter_class, reactor.alerter.Alerter):
                 raise ReactorException('Alerter module %s is not a subclass of Alerter' % alerter_class)
             alerters.append(alerter_class(rule, alerter_conf))
-        rule.type.alerters = alerters
+        rule.alerters = alerters
 
 
 class FileRuleLoader(RuleLoader):
-    conf_schema = yaml_schema(SetDefaultsDraft7Validator,
-                              os.path.join(os.path.dirname(__file__), 'schemas/loader-file.yaml'))
+    conf_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/loader-file.yaml', __file__)
 
     def discover(self, use_rules: list = None) -> List[str]:
         # Passing a list of use rules directly will bypass rules_folder and .yaml checks
@@ -311,19 +322,19 @@ class FileRuleLoader(RuleLoader):
 
         return list(rules.values())
 
-    def get_hash(self, rule_locator: str) -> str:
+    def get_hash(self, locator: str) -> str:
         rule_hash = hashlib.sha256()
-        if os.path.exists(rule_locator):
-            with open(rule_locator) as fh:
+        if os.path.exists(locator):
+            with open(locator) as fh:
                 rule_hash.update(fh.read().encode('utf-8'))
-            for import_locator in self.rule_imports.get(rule_locator, []):
+            for import_locator in self.rule_imports.get(locator, []):
                 with open(import_locator) as fh:
                     rule_hash.update(fh.read().encode('utf-8'))
         return rule_hash.hexdigest()
 
-    def get_yaml(self, rule_id: str) -> dict:
+    def get_yaml(self, locator: str) -> dict:
         try:
-            return load_yaml(rule_id)
+            return load_yaml(locator)
         except yaml.YAMLError as e:
             raise ConfigException(str(e))
 
