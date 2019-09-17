@@ -3,16 +3,15 @@ import pytest
 import mock
 
 from reactor.exceptions import ReactorException
-from reactor.rule import Rule
-from reactor.ruletype import RuleType, FlatlineRuleType
+from reactor.rule import Rule, FlatlineRule
 from reactor.util import (
     ts_to_dt, unix_to_dt, unixms_to_dt, ts_to_dt_with_format,
     dt_to_ts, dt_to_unix, dt_to_unixms, dt_to_ts_with_format,
 )
 
 
-def gen_rule(rule_type: RuleType = None, **kwargs):
-    return Rule('123', kwargs, rule_type)
+def gen_rule(rule_type=Rule, **kwargs):
+    return rule_type('123', '', kwargs)
 
 
 def gen_hits(size, timestamp_field='@timestamp', fields=None, **kwargs):
@@ -160,7 +159,7 @@ def test_get_alert_body_without_timestamp():
 
 
 def test_merge_alert_body():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts')
+    rule = gen_rule(name='Test', timestamp_field='ts')
     orig_data = {'num_events': 1,
                  'began_at': datetime.datetime(2019, 7, 26, 9, 34, 52),
                  'ended_at': datetime.datetime(2019, 7, 26, 9, 34, 52)}
@@ -181,7 +180,7 @@ def test_merge_alert_body():
 
 
 def test_get_query():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -192,7 +191,7 @@ def test_get_query():
 
 
 def test_get_query_with_timestamp_field():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -203,7 +202,7 @@ def test_get_query_with_timestamp_field():
 
 
 def test_get_query_with_sort():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -214,7 +213,7 @@ def test_get_query_with_sort():
 
 
 def test_get_query_with_start_time():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -227,7 +226,7 @@ def test_get_query_with_start_time():
 
 
 def test_get_query_with_end_time():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -240,7 +239,7 @@ def test_get_query_with_end_time():
 
 
 def test_get_query_with_start_and_end_time():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -256,7 +255,7 @@ def test_get_query_with_start_and_end_time():
 
 
 def test_get_terms_query():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -273,7 +272,7 @@ def test_get_terms_query():
 
 @pytest.mark.skip(reason='Test not yet implemented')
 def test_get_aggregation_query():
-    rule = gen_rule(RuleType({}), name='Test', timestamp_field='ts', timestamp_type='iso')
+    rule = gen_rule(name='Test', timestamp_field='ts', timestamp_type='iso')
     with mock.patch('reactor.util.ElasticSearchClient') as es_client:
         es_client.return_value = mock.Mock()
         es_client.return_value.es_version_at_least = mock.MagicMock(return_value=True)
@@ -305,43 +304,43 @@ def test_adjust_start_time_for_interval_sync():
 
 
 def test_get_query_key_value_with_query_key():
-    rule = gen_rule(RuleType({}), query_key='qk_field')
+    rule = gen_rule(query_key='qk_field')
     match = {'qk_field': 'qk_value'}
     assert rule.get_query_key_value(match) == 'qk_value'
 
 
 def test_get_query_key_value_with_missing_query_key():
-    rule = gen_rule(RuleType({}), query_key='qk_field')
+    rule = gen_rule(query_key='qk_field')
     match = {}
     assert rule.get_query_key_value(match) == '_missing'
 
 
 def test_get_query_key_value_flatline_with_query_key():
-    rule = gen_rule(FlatlineRuleType({'attach_related': False, 'threshold': 1}), query_key='qk_field')
+    rule = gen_rule(FlatlineRule, attach_related=False, threshold=1, query_key='qk_field')
     match = {'qk_field': 'qk_value', 'key': 'key_value'}
     assert rule.get_query_key_value(match) == 'key_value'
 
 
 def test_get_query_key_value_without_query_key():
-    rule = gen_rule(RuleType({}))
+    rule = gen_rule()
     match = {'qk_field': 'qk_value'}
     assert rule.get_query_key_value(match) is None
 
 
 def test_get_aggregation_key_value_with_key():
-    rule = gen_rule(RuleType({}), aggregation_key='agg_field')
+    rule = gen_rule(aggregation_key='agg_field')
     match = {'agg_field': 'agg_value'}
     assert rule.get_aggregation_key_value(match) == 'agg_value'
 
 
 def test_get_aggregation_key_value_with_missing_key():
-    rule = gen_rule(RuleType({}), aggregation_key='agg_field')
+    rule = gen_rule(aggregation_key='agg_field')
     match = {}
     assert rule.get_aggregation_key_value(match) == '_missing'
 
 
 def test_get_aggregation_key_value_without_key():
-    rule = gen_rule(RuleType({}))
+    rule = gen_rule()
     match = {'agg_field': 'agg_value'}
     assert rule.get_aggregation_key_value(match) is None
 

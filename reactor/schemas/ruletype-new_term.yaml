@@ -10,7 +10,7 @@ oneOf:
 - required: [query_key]
 
 properties:
-  type: {enum: [new_term, NewTermRuleType]}
+  type: {enum: [new_term, NewTermRule]}
   fields: {$ref: "common.yaml#/definitions/arrayOfStringsOrOtherArrays"}
   query_key: {$ref: "common.yaml#/definitions/arrayOfStrings"}
   terms_window_size: {$ref: "common.yaml#/definitions/timeframe"}

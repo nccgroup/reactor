@@ -1,7 +1,7 @@
 ---
 is_enabled: true
-uuid: "frequency-hits_query"
-name: "Frequency hits rule type"
+uuid: "frequency-count_query"
+name: "Frequency counts rule type"
 description: A "frequency" rule type.
 index: reactor_logs
 use_local_time: false
@@ -15,6 +15,10 @@ buffer_time:
   hours: 24
 realert:
   minutes: 1
+
+use_count_query: true
+doc_type: doc
+
 filter:
 - bool:
     should:

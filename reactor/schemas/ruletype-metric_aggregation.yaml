@@ -10,7 +10,7 @@ oneOf:
 - required: [min_threshold]
 
 properties:
-  type: {enum: [metric_aggregation, MatchAggregationRuleType]}
+  type: {enum: [metric_aggregation, MatchAggregationRule]}
   metric_agg_type: {enum: ["min", "max", "avg", "sum", "cardinality", "value_count"]}
   max_cardinality: {type: float}
   min_cardinality: {type: float}

@@ -2,10 +2,10 @@ import collections
 import datetime
 import logging
 import os
+import pytz
 import re
 import time
 import uuid
-from typing import Union
 
 import dateutil
 import dateutil.parser
@@ -85,7 +85,7 @@ def parse_timestamp(value: str, ts_format: str = '%Y-%m-%dT%H:%M:%S') -> datetim
     timestamp = datetime.datetime.strptime(value, ts_format)
     # If no timezone information provided, assume local timezone
     if not timestamp.tzinfo:
-        timestamp = timestamp.replace(tzinfo=dateutil.tz.tzlocal())
+        timestamp = timestamp.astimezone()
     return timestamp
 
 
@@ -127,10 +127,10 @@ def import_class(class_str: str, mappings: dict = None, module=None) -> type:
 
 
 yaml_loader = None
-env_matcher = re.compile(r'\$\{([a-zA-Z_$][a-zA-Z_$0-9]*)(:[^}]+)?\}')
+env_matcher = re.compile(r'\${([a-zA-Z_$][a-zA-Z_$0-9]*)(:[^}]+)?}')
 
 
-def load_yaml(filename: str) -> Union[dict, list, None]:
+def load_yaml(filename: str) -> dict:
     global yaml_loader
     if not yaml_loader:
         try:
@@ -187,7 +187,7 @@ def dots_set(dots_dict: dict, key: str, value) -> bool:
         for sub_key in sub_keys[:-1]:
             cursor_dict[sub_key] = {} if sub_key not in cursor_dict else cursor_dict[sub_key]
             cursor_dict = cursor_dict[sub_key]
-        cursor_dict.setdefault(sub_keys[-1], value)
+        cursor_dict[sub_keys[-1]] = value
 
     return True
 
@@ -398,7 +398,7 @@ def ts_to_dt(timestamp) -> datetime.datetime:
     dt = dateutil.parser.parse(timestamp)
     # Implicitly convert local timestamps to UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=dateutil.tz.tzutc())
+        dt = dt.replace(tzinfo=pytz.utc)
     return dt
 
 
@@ -422,7 +422,7 @@ def ts_to_dt_with_format(timestamp, ts_format) -> datetime.datetime:
     dt = datetime.datetime.strptime(timestamp, ts_format)
     # Implicitly convert local timestamps to UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=dateutil.tz.tzutc())
+        dt = dt.replace(tzinfo=pytz.utc)
     return dt
 
 
@@ -435,7 +435,7 @@ def dt_to_ts_with_format(dt, ts_format) -> str:
 
 def unix_to_dt(ts) -> datetime.datetime:
     dt = datetime.datetime.utcfromtimestamp(float(ts))
-    dt = dt.replace(tzinfo=dateutil.tz.tzutc())
+    dt = dt.replace(tzinfo=pytz.utc)
     return dt
 
 
@@ -452,7 +452,7 @@ def dt_to_unixms(dt) -> int:
 
 
 def dt_now():
-    return datetime.datetime.utcnow().replace(tzinfo=dateutil.tz.tzutc())
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
 
 
 def pretty_ts(timestamp, tz=True):
@@ -465,7 +465,7 @@ def pretty_ts(timestamp, tz=True):
     if not isinstance(timestamp, datetime.datetime):
         dt = ts_to_dt(timestamp)
     if tz:
-        dt = dt.astimezone(dateutil.tz.tzlocal())
+        dt = dt.astimezone()
     return dt.strftime('%Y-%m-%d %H:%M:%S %Z')
 
 

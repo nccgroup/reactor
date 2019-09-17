@@ -3,9 +3,9 @@ import signal
 import sys
 
 from reactor.alerter import TestAlerter
-from reactor.client import Client
 from reactor.config import parse_config
 from reactor.exceptions import ReactorException
+from reactor.reactor import Reactor
 from reactor.util import (
     parse_duration,
     parse_timestamp,
@@ -16,8 +16,8 @@ from reactor.util import (
     pretty_ts
 )
 
-import requests
-requests.packages.urllib3.disable_warnings()
+import urllib3
+urllib3.disable_warnings()
 
 
 def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
@@ -28,6 +28,12 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         metavar='my_config.yaml',
                         default='config.yaml',
                         help='Global config file')
+    config.add_argument('-l', '--log-level',
+                        action='store',
+                        dest='log_level',
+                        default=None,
+                        choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'],
+                        help='Set the logging level')
 
     patience = argparse.ArgumentParser(add_help=False)
     patience.add_argument('--patience',
@@ -219,8 +225,8 @@ def perform_init(config: dict, args: dict) -> int:
 
 def perform_validate(config: dict, args: dict) -> int:
     try:
-        client = Client(config, args)
-        client.loader.load(args)
+        reactor = Reactor(config, args)
+        reactor.loader.load(args)
         reactor_logger.info('All specified rules are valid')
         return 0
     except ReactorException as e:
@@ -233,14 +239,14 @@ def perform_test(config: dict, args: dict) -> int:
     start_time = args['start'] or (dt_now() - args['timeframe'])
     end_time = start_time + args['timeframe']
 
-    client = Client(config, args)
-    client.loader.load(args)
+    reactor = Reactor(config, args)
+    reactor.loader.load(args)
 
-    for rule in client.loader:
-        rule.type.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
+    for rule in reactor.loader:
+        rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
         rule.set_conf('segment_size', args['timeframe'])
         rule.max_hits = args['max_hits']
-        client.test_rule(rule, end_time, start_time=start_time)
+        reactor.test_rule(rule, end_time, start_time=start_time)
     return 0
 
 
@@ -250,10 +256,10 @@ def perform_hits(config: dict, args: dict) -> int:
     start_time = args['start'] or (dt_now() - args['timeframe'])
     end_time = start_time + args['timeframe']
 
-    client = Client(config, args)
-    client.loader.load(args)
+    reactor = Reactor(config, args)
+    reactor.loader.load(args)
 
-    for rule in client.loader:
+    for rule in reactor.loader:
         if args['counts']:
             hits = rule.get_hits_count(start_time, end_time, rule.get_index(start_time, end_time))
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
@@ -265,11 +271,11 @@ def perform_hits(config: dict, args: dict) -> int:
         else:
             alerter = TestAlerter(rule, {'format': args['format'], 'output': args['output']})
 
-            rule.type.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
+            rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = client.run_query(rule, start_time, end_time)
+            hits = reactor.run_query(rule, start_time, end_time)
             alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
@@ -282,16 +288,16 @@ def perform_hits(config: dict, args: dict) -> int:
 
 def perform_console(config: dict, args: dict) -> int:
     from reactor.console import run_console
-    run_console(Client(config, args))
+    run_console(Reactor(config, args))
     return 0
 
 
 def perform_silence(config: dict, args: dict) -> int:
     """ Perform the silence action. """
-    client = Client(config, args)
-    client.loader.load(args)
-    for rule in client.loader:
-        client.silence(rule, duration=args['duration'], revoke=args['revoke'])
+    reactor = Reactor(config, args)
+    reactor.loader.load(args)
+    for rule in reactor.loader:
+        reactor.silence(rule, duration=args['duration'], revoke=args['revoke'])
 
     return 0
 
@@ -303,6 +309,9 @@ def main(args):
     if args['action'] is None:
         parser.print_help()
         return 0
+
+    if args['log_level']:
+        reactor_logger.setLevel(args['log_level'])
 
     try:
         config = parse_config(args['config'])
@@ -334,7 +343,9 @@ def main(args):
 
         # Run Reactor
         else:
-            exit_code = Client(config, args).start()
+            reactor = Reactor(config, args)
+            signal.signal(signal.SIGINT, reactor.terminate)
+            exit_code = reactor.start()
 
     except Exception as e:
         print('Raised exception %s: %s' % (type(e), e))

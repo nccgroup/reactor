@@ -3,18 +3,18 @@ import os
 import texttable as tt
 import time
 
-from reactor.client import Client
+from reactor.reactor import Reactor
 from reactor.util import ts_to_dt, pretty_ts, dt_now
 
 highlight = []
 cache = {}
 
 
-def run_console(client: Client):
+def run_console(client: Reactor):
     curses.wrapper(console_main, client=client)
 
 
-def console_main(stdscr, client: Client):
+def console_main(stdscr, client: Reactor):
     # Hide the cursor
     curses.curs_set(0)
 
@@ -159,7 +159,7 @@ def console_main(stdscr, client: Client):
         curses.doupdate()
 
 
-def generate_table(client: Client, index: str, max_hits: int, page: int = 0):
+def generate_table(client: Reactor, index: str, max_hits: int, page: int = 0):
     global highlight
     highlight = []
     try:

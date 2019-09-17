@@ -68,7 +68,7 @@ class BasicMatchString(object):
         self.text += alert_text
 
     def _add_rule_text(self):
-        self.text += self.rule.type.get_match_str(self.extra, self.match)
+        self.text += self.rule.get_match_str(self.extra, self.match)
 
     def _add_top_counts(self):
         for key, counts in self.match.items():
@@ -462,15 +462,15 @@ class CommandAlerter(Alerter):
 
         # Run command and pipe data
         try:
-            subp = subprocess.Popen(command, stdin=subprocess.PIPE, shell=self.shell)
+            sub_proc = subprocess.Popen(command, stdin=subprocess.PIPE, shell=self.shell)
 
             if self.conf.get('pipe_format') == 'json':
                 match_json = json.dumps(alerts, cls=DateTimeEncoder) + '\n'
-                _, _ = subp.communicate(input=match_json)
+                _, _ = sub_proc.communicate(input=match_json)
             elif self.conf.get('pipe_format') == 'plain':
                 alert_text = self.create_alert_body(alerts)
-                _, _ = subp.communicate(input=alert_text)
-            if self.conf.get('fail_on_non_zero_exit', False) and subp.wait():
+                _, _ = sub_proc.communicate(input=alert_text)
+            if self.conf.get('fail_on_non_zero_exit', False) and sub_proc.wait():
                 raise ReactorException('Non-zero exit code while running command %s' % (' '.join(command)))
         except OSError as e:
             raise ReactorException('Error while running command %s: %s' % (' '.join(command), e))

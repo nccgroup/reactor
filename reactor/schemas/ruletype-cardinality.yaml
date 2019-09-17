@@ -10,7 +10,7 @@ oneOf:
 - required: [min_cardinality]
 
 properties:
-  type: {enum: [cardinality, CardinalityRuleType]}
+  type: {enum: [cardinality, CardinalityRule]}
   max_cardinality: {type: integer}
   min_cardinality: {type: integer}
   cardinality_field: {type: string}

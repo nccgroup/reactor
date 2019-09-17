@@ -7,7 +7,7 @@ type: object
 required: [query_key, compare_key, ignore_null]
 
 properties:
-  type: {enum: [change, ChangeRuleType]}
+  type: {enum: [change, ChangeRule]}
   compare_key: {'items': {'type': 'string'},'type': ['string', 'array']}
   ignore_null: {type: boolean}
   timeframe: {$ref: "common.yaml#/definitions/timeframe"}
