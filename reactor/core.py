@@ -161,15 +161,6 @@ class Core(object):
                     reactor_logger.info('Reached end time, shutting down reactor')
                     self.scheduler.shutdown()
 
-            # Apply rules based on execution time limits
-            for rule in self.loader:
-                if not rule.conf('limit_execution') or not rule.data.next_start_time:
-                    continue
-
-                self.reset_rule_schedule(rule)
-                rule.data.next_start_time = None
-                rule.data.next_min_start_time = None
-
             # Briefly sleep
             time.sleep(0.1)
 
@@ -316,17 +307,23 @@ class Core(object):
         # Get the rule
         rule = self.loader[event.job_id]
 
+        # If there are too many instances running
+        if event.code == apscheduler.events.EVENT_JOB_MAX_INSTANCES:
+            reactor_logger.warning('Execution time for "%s" longer than run_every (%s)', rule.name, rule.run_every)
+            return
+
         # If there was an uncaught exception raised
         if event.code == apscheduler.events.EVENT_JOB_ERROR:
             self.handle_uncaught_exception(event.exception, rule)
 
-        # If there are too many instances running
-        elif event.code == apscheduler.events.EVENT_JOB_MAX_INSTANCES:
-            reactor_logger.warning('Execution time for "%s" longer than run_every (%s)', rule.name, rule.run_every)
-
         # If the rule successfully executed
         elif event.code == apscheduler.events.EVENT_JOB_EXECUTED:
             rule.data = event.retval
+
+        # Apply rules based on execution time limits
+        self.reset_rule_schedule(rule)
+        rule.data.next_start_time = None
+        rule.data.next_min_start_time = None
 
 
 class Handler(object):
