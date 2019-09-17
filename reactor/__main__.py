@@ -3,9 +3,9 @@ import signal
 import sys
 
 from reactor.alerter import TestAlerter
-from reactor.core import Core
 from reactor.config import parse_config
 from reactor.exceptions import ReactorException
+from reactor.reactor import Reactor
 from reactor.util import (
     parse_duration,
     parse_timestamp,
@@ -225,8 +225,8 @@ def perform_init(config: dict, args: dict) -> int:
 
 def perform_validate(config: dict, args: dict) -> int:
     try:
-        core = Core(config, args)
-        core.loader.load(args)
+        reactor = Reactor(config, args)
+        reactor.loader.load(args)
         reactor_logger.info('All specified rules are valid')
         return 0
     except ReactorException as e:
@@ -239,14 +239,14 @@ def perform_test(config: dict, args: dict) -> int:
     start_time = args['start'] or (dt_now() - args['timeframe'])
     end_time = start_time + args['timeframe']
 
-    core = Core(config, args)
-    core.loader.load(args)
+    reactor = Reactor(config, args)
+    reactor.loader.load(args)
 
-    for rule in core.loader:
+    for rule in reactor.loader:
         rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
         rule.set_conf('segment_size', args['timeframe'])
         rule.max_hits = args['max_hits']
-        core.test_rule(rule, end_time, start_time=start_time)
+        reactor.test_rule(rule, end_time, start_time=start_time)
     return 0
 
 
@@ -256,10 +256,10 @@ def perform_hits(config: dict, args: dict) -> int:
     start_time = args['start'] or (dt_now() - args['timeframe'])
     end_time = start_time + args['timeframe']
 
-    core = Core(config, args)
-    core.loader.load(args)
+    reactor = Reactor(config, args)
+    reactor.loader.load(args)
 
-    for rule in core.loader:
+    for rule in reactor.loader:
         if args['counts']:
             hits = rule.get_hits_count(start_time, end_time, rule.get_index(start_time, end_time))
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
@@ -275,7 +275,7 @@ def perform_hits(config: dict, args: dict) -> int:
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = core.run_query(rule, start_time, end_time)
+            hits = reactor.run_query(rule, start_time, end_time)
             alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
@@ -288,16 +288,16 @@ def perform_hits(config: dict, args: dict) -> int:
 
 def perform_console(config: dict, args: dict) -> int:
     from reactor.console import run_console
-    run_console(Core(config, args))
+    run_console(Reactor(config, args))
     return 0
 
 
 def perform_silence(config: dict, args: dict) -> int:
     """ Perform the silence action. """
-    core = Core(config, args)
-    core.loader.load(args)
-    for rule in core.loader:
-        core.silence(rule, duration=args['duration'], revoke=args['revoke'])
+    reactor = Reactor(config, args)
+    reactor.loader.load(args)
+    for rule in reactor.loader:
+        reactor.silence(rule, duration=args['duration'], revoke=args['revoke'])
 
     return 0
 
@@ -343,9 +343,9 @@ def main(args):
 
         # Run Reactor
         else:
-            core = Core(config, args)
-            signal.signal(signal.SIGINT, core.terminate)
-            exit_code = core.start()
+            reactor = Reactor(config, args)
+            signal.signal(signal.SIGINT, reactor.terminate)
+            exit_code = reactor.start()
 
     except Exception as e:
         print('Raised exception %s: %s' % (type(e), e))

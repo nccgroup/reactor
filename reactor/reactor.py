@@ -31,7 +31,7 @@ from reactor.util import (
 _authkey = secrets.token_urlsafe(32)
 
 
-class Core(object):
+class Reactor(object):
     MAX_TERMINATE_CALLED = 3
 
     def __init__(self, conf: dict, args: dict):
@@ -55,18 +55,13 @@ class Core(object):
         self.es_client = elasticsearch_client(conf['elasticsearch'])
         self.writeback_index = conf['index']
         self.alert_alias = conf['alert_alias']
-        self.alert_time_limit = conf['alert_time_limit']
-        self.old_query_limit = conf['old_query_limit']
-        self.max_aggregation = conf['max_aggregation']
-        self.string_multi_field_name = conf['string_multi_field_name']
 
         self.start_time = args.get('start', dt_now())
-        self._es_version = None
         self.scheduler = apscheduler.schedulers.background.BackgroundScheduler()
         self.terminate_called = 0
-        self.parent_pid = 0
+        self.core_pid = multiprocessing.current_process().pid
 
-        self.handler = Handler(conf, args)
+        self.core = Core(conf, args)
 
         self._configure_schedule()
 
@@ -109,7 +104,7 @@ class Core(object):
 
     def test_rule(self, rule: Rule, end_time, start_time=None):
         try:
-            rule.data = self.handler.run_rule(rule, end_time, start_time)
+            rule.data = self.core.run_rule(rule, end_time, start_time)
         except ReactorException as e:
             reactor_logger.error('Error running rule "%s": %s', rule.name, str(e))
         except Exception as e:
@@ -129,7 +124,7 @@ class Core(object):
     def start(self):
         """ Periodically update rules and schedule to run. """
         if self.running:
-            raise ReactorException('Core already running')
+            raise ReactorException('Reactor already running')
 
         # Ensure ElasticSearch is responsive
         if not self.wait_until_responsive(timeout=self.args['timeout']):
@@ -137,7 +132,6 @@ class Core(object):
 
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         reactor_logger.info('Starting up')
-        self.parent_pid = multiprocessing.current_process().pid
 
         # Add internal jobs to the scheduler
         self.scheduler.add_job(self.handle_pending_alerts, 'interval',
@@ -175,7 +169,7 @@ class Core(object):
             reactor_logger.critical('Terminating reactor')
             sys.exit(signal_num)
 
-        elif self.parent_pid == multiprocessing.current_process().pid:
+        elif self.core_pid == multiprocessing.current_process().pid:
             reactor_logger.info('Attempting normal shutdown')
             self.stop()
 
@@ -216,7 +210,7 @@ class Core(object):
         if not self.running:
             return
 
-        alerts_sent = self.handler.send_pending_alerts()
+        alerts_sent = self.core.send_pending_alerts()
         if alerts_sent > 0:
             reactor_logger.info('Sent %s pending alerts at %s', alerts_sent, pretty_ts(dt_now()))
 
@@ -260,7 +254,7 @@ class Core(object):
                                                                     timezone=pytz.utc)
             if not self.scheduler.get_job(rule.locator):
                 # Add the rule to the scheduler
-                self.scheduler.add_job(self.handler.handle_rule_execution,
+                self.scheduler.add_job(self.core.handle_rule_execution,
                                        args=[rule],
                                        id=rule.locator,
                                        jobstore='default',
@@ -281,13 +275,13 @@ class Core(object):
 
         # TODO: implement revoking silences (making sure to inform all running reactors of the change)
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
-        if self.handler.set_realert(rule, '_silence', dt_now() + duration, 0):
+        if self.core.set_realert(rule, '_silence', dt_now() + duration, 0):
             reactor_logger.warning('Silenced rule %s for %s', rule.name, duration)
 
     def handle_uncaught_exception(self, exception, rule):
         """ Disables a rule and sends a notification. """
         # reactor_logger.error(traceback.format_exc())
-        self.handler.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
+        self.core.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
 
         if rule.conf('disable_rule_on_error'):
             self.loader.disable(rule.locator)
@@ -326,7 +320,7 @@ class Core(object):
         rule.data.next_min_start_time = None
 
 
-class Handler(object):
+class Core(object):
     thread_data = threading.local()
 
     # def __init__(self, conf: dict, args: dict, scheduler):
@@ -343,7 +337,6 @@ class Handler(object):
         self.alert_time_limit = conf['alert_time_limit']
         self.old_query_limit = conf['old_query_limit']
         self.max_aggregation = conf['max_aggregation']
-        self.string_multi_field_name = conf['string_multi_field_name']
 
     def get_writeback_index(self, doc_type: str, rule=None, match_body=None):
         """ In ElasticSearch >= 6.x, multiple doc types in a single index. """
