@@ -2,10 +2,10 @@ import collections
 import datetime
 import logging
 import os
+import pytz
 import re
 import time
 import uuid
-from typing import Union
 
 import dateutil
 import dateutil.parser
@@ -18,9 +18,6 @@ from reactor.exceptions import ReactorException
 logging.basicConfig(format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
 reactor_logger = logging.getLogger('reactor')
 reactor_logger.setLevel(logging.INFO)
-
-_tz_utc = dateutil.tz.tzutc()
-_tz_local = dateutil.tz.tzlocal()
 
 
 class ElasticSearchClient(elasticsearch.Elasticsearch):
@@ -88,7 +85,7 @@ def parse_timestamp(value: str, ts_format: str = '%Y-%m-%dT%H:%M:%S') -> datetim
     timestamp = datetime.datetime.strptime(value, ts_format)
     # If no timezone information provided, assume local timezone
     if not timestamp.tzinfo:
-        timestamp = timestamp.replace(tzinfo=_tz_local)
+        timestamp = timestamp.astimezone()
     return timestamp
 
 
@@ -401,7 +398,7 @@ def ts_to_dt(timestamp) -> datetime.datetime:
     dt = dateutil.parser.parse(timestamp)
     # Implicitly convert local timestamps to UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=_tz_utc)
+        dt = dt.replace(tzinfo=pytz.utc)
     return dt
 
 
@@ -425,7 +422,7 @@ def ts_to_dt_with_format(timestamp, ts_format) -> datetime.datetime:
     dt = datetime.datetime.strptime(timestamp, ts_format)
     # Implicitly convert local timestamps to UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=_tz_utc)
+        dt = dt.replace(tzinfo=pytz.utc)
     return dt
 
 
@@ -438,7 +435,7 @@ def dt_to_ts_with_format(dt, ts_format) -> str:
 
 def unix_to_dt(ts) -> datetime.datetime:
     dt = datetime.datetime.utcfromtimestamp(float(ts))
-    dt = dt.replace(tzinfo=_tz_utc)
+    dt = dt.replace(tzinfo=pytz.utc)
     return dt
 
 
@@ -455,7 +452,7 @@ def dt_to_unixms(dt) -> int:
 
 
 def dt_now():
-    return datetime.datetime.utcnow().replace(tzinfo=_tz_utc)
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
 
 
 def pretty_ts(timestamp, tz=True):
@@ -468,7 +465,7 @@ def pretty_ts(timestamp, tz=True):
     if not isinstance(timestamp, datetime.datetime):
         dt = ts_to_dt(timestamp)
     if tz:
-        dt = dt.astimezone(_tz_local)
+        dt = dt.astimezone()
     return dt.strftime('%Y-%m-%d %H:%M:%S %Z')
 
 
