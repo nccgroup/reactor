@@ -12,7 +12,7 @@ node neighbours, nor does it persist any state. As such it should be used only f
 
     raft_node = RaftNode(address=('hostname.of.neighbour2', 7000)
                          neighbours=[('hostname.of.neighbour2', 7000), ('hostname.of.neighbour3', 7000)])
-    raft_thread = threading.Thread(target=raft_node.execute)
+    raft_thread = threading.Thread(target=raft_node.execute, name='RAFT-execute')
     raft_thread.start()
 
 
@@ -50,6 +50,8 @@ node and a shared CA::
     raft_node.execute()
 
 
+
+``RaftNoe`` uses ``logging.getLogger('raft')``.
 """
 import hashlib
 import logging
@@ -66,6 +68,9 @@ import time
 import typing
 
 from collections import OrderedDict, deque
+
+# By default add the null handler to the library logger
+logging.getLogger('raft').addHandler(logging.NullHandler())
 
 STATE_FOLLOWER = 1
 STATE_CANDIDATE = 2
@@ -154,7 +159,7 @@ class RaftNode(object):
         Raft will be able to elect and maintain a steady leader as long as the system satisfies the following
         *timing requirement*:
 
-        ``broadcastTime << electionTimeout << MTBF``
+        ``broadcastTime << electionTimeout << minimumTimeBetweenFailure``
     """
     MAX_TERMINATE_CALLED = 3
     """ Number of terminate calls before the threads are killed. """
@@ -170,18 +175,17 @@ class RaftNode(object):
 
     def __init__(self, address: tuple, neighbours: list,
                  election_timeout: float = ELECTION_TIMEOUT,
-                 heartbeat_timeout: float = HEARTBEAT_TIMEOUT,
-                 logger: logging.Logger = None):
+                 heartbeat_timeout: float = HEARTBEAT_TIMEOUT):
         """
         :param address: Tuple of `(ip_or_host: str, port: int)`
         :param neighbours: List of addresses
         :param election_timeout: Minimum time in seconds to wait for a leader before holding an election
         :param heartbeat_timeout: Minimum time in seconds for a leader to wait between sending heartbeats
-        :param logger: (optional) Logger to be used (default logger as a `NullHandler` added)
         """
         self.terminate = threading.Event()
         self.term = 1
-        self.state = STATE_FOLLOWER
+        self._state = STATE_FOLLOWER
+        self.changed = 0.0
         self.leader = None
         self.address = address
         self.neighbours = {n: RaftNeighbour(n) for n in neighbours}  # type: typing.Dict[any, RaftNeighbour]
@@ -197,19 +201,15 @@ class RaftNode(object):
 
         self.execute_called = False
         self.terminate_called = 0
-        self._logger = logger
 
     @property
-    def logger(self):
-        """ Ensure there is always a logger available. """
-        if self._logger is None:
-            self._logger = logging.getLogger('raft')
-            self._logger.addHandler(logging.NullHandler())
-        return self._logger
+    def state(self):
+        return self._state
 
-    @logger.setter
-    def logger(self, logger):
-        self._logger = logger
+    @state.setter
+    def state(self, state):
+        self.changed = time.time()
+        self._state = state
 
     def is_leader(self) -> bool:
         """ Return whether the RaftNode is the leader of the cluster. """
@@ -218,6 +218,20 @@ class RaftNode(object):
     def has_leader(self) -> bool:
         """ Return whether the RaftNode's cluster has an elected leader (including itself). """
         return self.is_leader() or self.leader is not None
+
+    def is_majority(self, count: int) -> bool:
+        """ Return whether the count is a majority of the neighbourhood. """
+        return count >= self.majority
+
+    @property
+    def majority(self) -> int:
+        """ Number of nodes required to get a majority. """
+        return math.ceil((len(self.neighbours)+1)/2)
+
+    @property
+    def neighbourhood(self) -> int:
+        """ Number of nodes in the network. """
+        return len(self.neighbours) + 1
 
     def set_ssl(self, key_file: str, crt_file: str, ca_crt: str, ciphers: str = None) -> None:
         """
@@ -264,18 +278,21 @@ class RaftNode(object):
         sock.bind(self.address)
         sock.settimeout(self.SOCKET_TIMEOUT)
         sock.listen(len(self.neighbours))
+
+        logger = logging.getLogger('raft.listen')
         while not self.terminate.is_set():
             # Handle a connection from another RaftNode
             try:
                 (client_sock, address) = sock.accept()
 
                 threading.Thread(target=self.receive, args=(client_sock,),
-                                 name='recv', daemon=True).start()
+                                 name='RAFT-receive', daemon=True).start()
             except socket.timeout:
                 continue
             except ssl.SSLError as e:
                 import traceback
-                self.logger.critical('%s %s', repr(e), traceback.print_exc())
+                logger.critical(repr(e))
+                logger.debug(traceback.print_exc())
                 continue
 
         sock.close()
@@ -286,11 +303,15 @@ class RaftNode(object):
         :param client_sock: Socket to receive messages
         """
         client_sock.settimeout(self.SOCKET_TIMEOUT)
+        logger = logging.getLogger('raft.recv')
         while not self.terminate.is_set():
             try:
                 buffer = client_sock.recv(struct.calcsize(MSG_HEADER_FORMAT))
                 msg_len = struct.unpack(MSG_HEADER_FORMAT, buffer)[0]
             except socket.timeout:
+                time.sleep(0.001)
+                continue
+            except ConnectionError:
                 time.sleep(0.001)
                 continue
             except (ValueError, struct.error):
@@ -302,7 +323,7 @@ class RaftNode(object):
             if msg is None:
                 continue
 
-            self.logger.debug('Recv %s', _rpc_str(msg))
+            logger.debug('Recv %s', _rpc_str(msg))
 
             self.neighbours[msg['sender']].append_recv(msg)
             # handle message
@@ -311,45 +332,13 @@ class RaftNode(object):
                 self.term = msg['term']
 
             if msg['rpc'] == RPC_APPEND_ENTRIES:
-                self.state = STATE_FOLLOWER
-                self.term = msg['term']
-                self.timeout_time = _next_timeout(self.state, 0, self.election_timeout, self.heartbeat_timeout)
-                response = msg['term'] >= self.term
-                self.queue_msg(_rpc_response(msg, self.term, response))
-                if response and self.leader != msg['sender']:
-                    self.leader = msg['sender']
-                    self.logger.warning('Accepted leader %s | %s', self.term, msg['sender'])
-                self.failed_elections = 0
+                self._handle_rpc_append_entries(msg, logger)
             elif msg['rpc'] == RPC_APPEND_RESPONSE:
                 pass
             elif msg['rpc'] == RPC_VOTE_REQUEST:
-                # If the vote is from an old term or we are a candidate
-                if msg['term'] < self.term or self.state == STATE_CANDIDATE:
-                    self.queue_msg(_rpc_response(msg, self.term, False))
-                # If we have voted in this term
-                elif self.term in self.elections and self.address in self.elections[self.term]:
-                    response = self.elections[self.term][self.address] == msg['sender']
-                    self.queue_msg(_rpc_response(msg, self.term, response))
-                    self.timeout_time = _next_timeout(self.state, 0, self.election_timeout, self.heartbeat_timeout)
-                else:
-                    self.elections[self.term] = {self.address: msg['sender']}
-                    self.queue_msg(_rpc_response(msg, self.term, True))
-                    self.timeout_time = _next_timeout(self.state, 0, self.election_timeout, self.heartbeat_timeout)
+                self._handle_rpc_vote_request(msg, logger)
             elif msg['rpc'] == RPC_VOTE_RESPONSE:
-                if msg['term'] not in self.elections:
-                    self.elections[msg['term']] = dict()
-                self.elections[msg['term']][msg['sender']] = msg['response']
-                if self.state != STATE_CANDIDATE:
-                    continue
-                # If we have a majority
-                if sum(1 for _ in filter(None, self.elections[self.term].values())) > math.ceil(len(self.neighbours)/2):
-                    self.state = STATE_LEADER
-                    self.timeout_time = time.time()
-                    self.failed_elections = 0
-                    for neighbour in self.neighbours.values():
-                        neighbour.contacted = False
-                    self.logger.warning('Elected leader %s', self.term)
-                pass
+                self._handle_rpc_vote_response(msg, logger)
 
             time.sleep(0.001)
 
@@ -360,7 +349,7 @@ class RaftNode(object):
         Attempt to read a message from `sock` that `msg_len` bytes long.
         :param sock: Socket to read the buffer
         :param msg_len: Length of the message
-        :return: Unserialised message or None
+        :return: Parsed message or None
         """
         buffer = b''
         while not self.terminate.is_set():
@@ -382,6 +371,7 @@ class RaftNode(object):
         """ Thread function to poll the message queue and send the message to specified neighbour. """
         pool = dict()
         msg = recipient = None
+        logger = logging.getLogger('raft.send')
         while not self.terminate.is_set():
             try:
                 msg = self.queue.get(block=True, timeout=self.QUEUE_TIMEOUT)
@@ -398,7 +388,7 @@ class RaftNode(object):
                 msg_header = struct.pack(MSG_HEADER_FORMAT, len(msg_body))
                 buffer = msg_header + msg_body
                 pool[recipient].sendall(buffer)
-                self.logger.debug('Sent %s', _rpc_str(msg))
+                logger.debug('Sent %s', _rpc_str(msg))
 
                 self.neighbours[recipient].append_sent(msg)
                 msg = recipient = None
@@ -407,31 +397,17 @@ class RaftNode(object):
                 continue
             except ConnectionError:
                 # Increment the failed send count
-                if msg is not None and recipient is not None:
-                    if self.neighbours[recipient].failed_count == 0:
-                        self.logger.warning('Connection error %s', recipient)
-                    else:
-                        self.logger.debug('Connection error %s (%s)',
-                                          recipient, self.neighbours[recipient].failed_count)
-
-                    self.neighbours[recipient].failed_count += 1
-                    del self.neighbours[recipient].queued[msg['id']]
+                self._handle_connection_failure(msg, logger)
                 # Tidy up the connection pool
                 if recipient is not None and recipient in pool:
                     pool[recipient].close()
                     del pool[recipient]
             except Exception as e:
                 import traceback
-                self.logger.error('%s %s', repr(e), traceback.print_exc())
+                logger.error(repr(e))
+                logger.debug(traceback.print_exc())
                 # Increment the failed send count
-                if msg is not None and recipient is not None:
-                    if self.neighbours[recipient].failed_count == 0:
-                        self.logger.warning('Connection error %s', recipient)
-                    else:
-                        self.logger.debug('Connection error %s (%s)',
-                                          recipient, self.neighbours[recipient].failed_count)
-                    self.neighbours[recipient].failed_count += 1
-                    del self.neighbours[recipient].queued[msg['id']]
+                self._handle_connection_failure(msg, logger)
                 continue
 
             if self.queue.empty():
@@ -445,19 +421,20 @@ class RaftNode(object):
         if self.execute_called:
             raise RuntimeError('RaftNode already executing')
 
+        logger = logging.getLogger('raft.exec')
         self.execute_called = True
         self.terminate.clear()
-        self.logger.info('Starting up %s', self.address)
+        logger.info('Starting up %s', self.address)
         self.timeout_time = _next_timeout(STATE_FOLLOWER, 0, self.election_timeout, self.heartbeat_timeout)
-        threading.Thread(target=self.send, name='send').start()
-        threading.Thread(target=self.listen, name='listen').start()
+        threading.Thread(target=self.send, name='RAFT-send').start()
+        threading.Thread(target=self.listen, name='RAFT-listen').start()
 
         while not self.terminate.is_set():
             # Follower
             if self.state == STATE_FOLLOWER:
                 # If election timeout reached
                 if time.time() > self.timeout_time:
-                    self.logger.warning('Convert to candidate')
+                    logger.warning('Convert to candidate')
                     self.state = STATE_CANDIDATE
                     self.leader = None
                     continue
@@ -465,7 +442,7 @@ class RaftNode(object):
             elif self.state == STATE_CANDIDATE:
                 if time.time() > self.timeout_time:
                     self.failed_elections += 1
-                    self.logger.warning('Election timeout %s|%s', self.term, self.failed_elections)
+                    logger.warning('Election timeout %s|%s', self.term, self.failed_elections)
                     self.term += 1
                     self.elections[self.term] = {self.address: self.address}
                     self.timeout_time = _next_timeout(self.state, self.failed_elections,
@@ -474,6 +451,9 @@ class RaftNode(object):
                         msg = _rpc_request(RPC_VOTE_REQUEST, self.term, neighbour.address)
                         self.queue_msg(msg)
                     continue
+                # If we have a majority
+                if self.is_majority(sum(1 for _ in filter(None, self.elections[self.term].values()))):
+                    self._handle_inauguration(logger)
             # Leader
             elif self.state == STATE_LEADER:
                 # Send heartbeats
@@ -499,9 +479,20 @@ class RaftNode(object):
                         mean_ping = statistics.mean(pings) * 1000.0
                         stdev_ping = statistics.stdev(pings, mean_ping) * 1000.0
                         statistics.median_grouped(pings)
-                        self.logger.debug('Average ping %3d/%3d: %5.1fms [%.5f]',
-                                          cnt_ping, tot_ping, mean_ping, stdev_ping)
+                        logger.debug('Average ping %3d/%3d: %5.1fms [%.5f]', cnt_ping, tot_ping, mean_ping, stdev_ping)
                     continue
+
+                # If we haven't heard from a majority of our neighbours within `election_timeout` seconds
+                not_responding_count = 0
+                for neighbour in self.neighbours.values():
+                    t = max(self.changed, neighbour.last_queued, neighbour.last_sent, neighbour.last_recv)
+                    if (time.time() - t) > self.election_timeout:
+                        not_responding_count += 1
+                if self.is_majority(not_responding_count):
+                    # Step down as a leader
+                    logger.warning('Stepping down as leader: majority lost (%d)', not_responding_count)
+                    self.state = STATE_FOLLOWER
+                    self.timeout_time = _next_timeout(STATE_FOLLOWER, 0, self.election_timeout, self.heartbeat_timeout)
             else:
                 # Unknown state
                 pass
@@ -512,13 +503,81 @@ class RaftNode(object):
 
     def shutdown(self) -> None:
         """ Set the terminate flag and increment """
+        logger = logging.getLogger('raft')
         self.terminate_called += 1
         self.terminate.set()
         if self.terminate_called == self.MAX_TERMINATE_CALLED:
-            self.logger.error(f"RaftNode failed to terminate after {self.terminate_called} attempts")
+            logger.error(f"RaftNode failed to terminate after {self.terminate_called} attempts")
             raise RaftException()
         else:
-            self.logger.info('Attempting normal shutdown')
+            logger.info('Attempting normal shutdown')
+
+    def _handle_connection_failure(self, msg: dict, logger: logging.Logger) -> None:
+        """ Handles connection failure to ``msg`` recipient. """
+        recipient = msg['recipient']
+        if msg is not None and recipient is not None:
+            if self.neighbours[recipient].failed_count == 0:
+                logger.warning('Connection error %s', recipient)
+            else:
+                logger.debug('Connection error %s (%s)', recipient, self.neighbours[recipient].failed_count)
+
+            self.neighbours[recipient].failed_count += 1
+            del self.neighbours[recipient].queued[msg['id']]
+
+    def _handle_rpc_append_entries(self, msg, logger: logging.Logger):
+        """ Handles RPC ``APPEND_ENTRIES``. """
+        self.state = STATE_FOLLOWER
+        self.term = msg['term']
+        self.timeout_time = _next_timeout(self.state, 0, self.election_timeout, self.heartbeat_timeout)
+        response = msg['term'] >= self.term
+        self.queue_msg(_rpc_response(msg, self.term, response))
+        if response and self.leader != msg['sender']:
+            self.leader = msg['sender']
+            logger.warning('Accepted leader %s | %s', self.term, msg['sender'])
+        self.failed_elections = 0
+
+    def _handle_rpc_vote_request(self, msg, logger: logging.Logger):
+        """ Handles RPC ``VOTE_REQUEST``. """
+        # If the vote is from an old term or we are a candidate
+        if msg['term'] < self.term or self.state == STATE_CANDIDATE:
+            response = False
+            self.queue_msg(_rpc_response(msg, self.term, response))
+
+        # If we have voted in this term
+        elif self.term in self.elections and self.address in self.elections[self.term]:
+            response = self.elections[self.term][self.address] == msg['sender']
+            self.queue_msg(_rpc_response(msg, self.term, response))
+            self.timeout_time = _next_timeout(self.state, 0, self.election_timeout, self.heartbeat_timeout)
+
+        else:
+            response = True
+            self.elections[self.term] = {self.address: msg['sender']}
+            self.queue_msg(_rpc_response(msg, self.term, response))
+            self.timeout_time = _next_timeout(self.state, 0, self.election_timeout, self.heartbeat_timeout)
+
+        logger.debug('Voted for %s in term %d: %r', msg['sender'], msg['term'], response)
+
+    def _handle_rpc_vote_response(self, msg, logger: logging.Logger):
+        """ Handles RPC ``VOTE_RESPONSE``. """
+        if msg['term'] not in self.elections:
+            self.elections[msg['term']] = dict()
+        self.elections[msg['term']][msg['sender']] = msg['response']
+
+        if self.state != STATE_CANDIDATE:
+            return
+
+        # If we have a majority
+        if self.is_majority(sum(1 for _ in filter(None, self.elections[self.term].values()))):
+            self._handle_inauguration(logger)
+
+    def _handle_inauguration(self, logger: logging.Logger) -> None:
+        """ Handles node inauguration. """
+        self.state = STATE_LEADER
+        self.timeout_time = time.time()
+        self.failed_elections = 0
+        for neighbour in self.neighbours.values():
+            neighbour.contacted = False
+        logger.warning('Elected leader %s', self.term)
 
 
 class RaftException(BaseException):
@@ -565,12 +624,16 @@ class RaftNeighbour(object):
         return self.queued.tail not in self.recv
 
     @property
+    def last_queued(self) -> float:
+        return self.queued[self.queued.tail] if len(self.queued) else 0.0
+
+    @property
     def last_sent(self) -> float:
-        return self.sent[self.sent.tail] if self.sent.tail is not None else 0
+        return self.sent[self.sent.tail] if len(self.sent) else 0.0
 
     @property
     def last_recv(self) -> float:
-        return self.recv[self.recv.tail] if self.recv.tail is not None else 0
+        return self.recv[self.recv.tail] if len(self.recv) else 0.0
 
 
 class History(OrderedDict):
@@ -590,6 +653,11 @@ class History(OrderedDict):
         self._tail = key
         if len(self) > self.maxsize:
             self.popitem(False)
+
+    def __delitem__(self, key):
+        super(History, self).__delitem__(key)
+        self._total -= 1
+        self._tail = deque(self, maxlen=1).pop() if len(self) else None
 
     @property
     def head(self):
@@ -613,24 +681,21 @@ if __name__ == '__main__':
 
     raft_logger = logging.getLogger('raft')
     ch = logging.StreamHandler(sys.stderr)
-    formatter = logging.Formatter('%(asctime)s %(name)s:%(threadName)s %(levelname)-8s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)-8s - %(message)s')
     ch.setFormatter(formatter)
     raft_logger.addHandler(ch)
 
     port = int(sys.argv[1])
     raft_node = RaftNode(('localhost', port), [('localhost', int(p)) for p in sys.argv[2:]], 0.5, 0.1)
-    raft_node.logger = raft_logger
-    raft_node.set_ssl('/Users/pdscopes/Sites/Einstein/pyraftlog/certs/transport-consensus.key',
-                      '/Users/pdscopes/Sites/Einstein/pyraftlog/certs/transport-consensus.crt',
-                      '/Users/pdscopes/Sites/Einstein/pyraftlog/certs/transport-ca.pem')
+    raft_node.set_ssl('./certs/transport-consensus.key',
+                      './certs/transport-consensus.crt',
+                      './certs/transport-ca.pem')
 
-    def handle_sigint(signal_num, current_stack_frame):
-        raft_node.shutdown()
+    def handle_sigint(signal_num, _):
+        if signal_num == signal.SIGINT:
+            raft_node.shutdown()
 
     signal.signal(signal.SIGINT, handle_sigint)
-    # raft_node.logger.setLevel(logging.DEBUG)
-    # threading.main_thread().name = 'exec'
-    # raft_node.execute()
-    raft_thread = threading.Thread(target=raft_node.execute)
+    raft_thread = threading.Thread(target=raft_node.execute, name='RAFT-execute')
     raft_thread.start()
     raft_thread.join()
