@@ -280,7 +280,7 @@ class RaftNode(object):
         sock.listen(len(self.neighbours))
 
         logger = logging.getLogger('raft.listen')
-        while not self.terminate.is_set():
+        while not self.terminate.is_set() and len(self.neighbours):
             # Handle a connection from another RaftNode
             try:
                 (client_sock, address) = sock.accept()
@@ -372,7 +372,7 @@ class RaftNode(object):
         pool = dict()
         msg = recipient = None
         logger = logging.getLogger('raft.send')
-        while not self.terminate.is_set():
+        while not self.terminate.is_set() and len(self.neighbours):
             try:
                 msg = self.queue.get(block=True, timeout=self.QUEUE_TIMEOUT)
                 recipient = msg['recipient']
