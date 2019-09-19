@@ -20,6 +20,11 @@ properties:
     type: integer
     title: "Maximum number of writeback actions to cache before flushing"
     default: 1000
+  max_processpool:
+    type: integer
+    title: "Maximum number of processes to run rules in (capped between 1 and CPU count)"
+    default: 0
+
 
   alert_time_limit:
     default: {days: 2}

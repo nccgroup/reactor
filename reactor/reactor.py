@@ -60,6 +60,7 @@ class Reactor(object):
         self.scheduler = apscheduler.schedulers.background.BackgroundScheduler()
         self.terminate_called = 0
         self.core_pid = multiprocessing.current_process().pid
+        self.max_processpool = max(1, min(multiprocessing.cpu_count(), self.conf['max_processpool'] or float('inf')))
 
         self.core = Core(conf, args)
 
@@ -77,8 +78,7 @@ class Reactor(object):
         }
         executors = {
             'default': {'type': 'threadpool', 'max_workers': 3},
-            'processpool': apscheduler.executors.pool.ProcessPoolExecutor(
-                max_workers=max(1, multiprocessing.cpu_count() - 1)),
+            'processpool': apscheduler.executors.pool.ProcessPoolExecutor(max_workers=self.max_processpool),
         }
         job_defaults = {
             'coalesce': True,
@@ -131,7 +131,7 @@ class Reactor(object):
             return 1
 
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
-        reactor_logger.info('Starting up')
+        reactor_logger.info('Starting up (max_processpool=%s)', self.max_processpool)
 
         # Add internal jobs to the scheduler
         self.scheduler.add_job(self.handle_pending_alerts, 'interval',
