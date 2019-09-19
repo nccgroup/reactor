@@ -51,7 +51,10 @@ node and a shared CA::
 
 
 
-``RaftNoe`` uses ``logging.getLogger('raft')``.
+``RaftNode`` uses ``logging.getLogger('raft')``.
+
+Meta data can be stored in a ``RaftNode`` which is then shared with neighbouring nodes in every message sent. Meta data
+should, for this reason, be kept to a minimum and used only to share important, required information.
 """
 import hashlib
 import logging
@@ -202,12 +205,16 @@ class RaftNode(object):
         self.execute_called = False
         self.terminate_called = 0
 
+        self._meta = {}
+
     @property
-    def state(self):
+    def state(self) -> int:
+        """ Return the state of the node. """
         return self._state
 
     @state.setter
-    def state(self, state):
+    def state(self, state: int) -> None:
+        """ Set the state of the node and make note of the time. """
         self.changed = time.time()
         self._state = state
 
@@ -232,6 +239,19 @@ class RaftNode(object):
     def neighbourhood(self) -> int:
         """ Number of nodes in the network. """
         return len(self.neighbours) + 1
+
+    @property
+    def meta(self) -> dict:
+        """
+        Returns the meta data of the node. Meta data is sent with every message to neighbouring nodes and stored.
+        """
+        return self._meta
+
+    def neighbourhood_meta(self) -> dict:
+        """ Returns a mapping of node address to meta data. """
+        joint_meta = {n.address: n.meta for n in self.neighbours.values()}
+        joint_meta[self.address] = self.meta
+        return joint_meta
 
     def set_ssl(self, key_file: str, crt_file: str, ca_crt: str, ciphers: str = None) -> None:
         """
@@ -326,6 +346,7 @@ class RaftNode(object):
             logger.debug('Recv %s', _rpc_str(msg))
 
             self.neighbours[msg['sender']].append_recv(msg)
+            self.neighbours[msg['sender']].meta = msg['meta']
             # handle message
             if msg['term'] > self.term:
                 self.state = STATE_FOLLOWER
@@ -378,6 +399,7 @@ class RaftNode(object):
                 recipient = msg['recipient']
                 msg['term'] = self.term
                 msg['sender'] = self.address
+                msg['meta'] = self.meta
 
                 if recipient not in pool:
                     sock = socket.create_connection(recipient)
@@ -600,6 +622,8 @@ class RaftNeighbour(object):
         self.failed_count = 0
         self.contacted = False
 
+        self.meta = {}
+
     def append_queued(self, msg: dict) -> None:
         """ Append a message to the queued history. """
         self.queued[msg['id']] = time.time()
@@ -647,14 +671,14 @@ class History(OrderedDict):
         self._tail = None
         super(History, self).__init__(*args, **kwargs)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         super(History, self).__setitem__(key, value)
         self._total += 1
         self._tail = key
         if len(self) > self.maxsize:
             self.popitem(False)
 
-    def __delitem__(self, key):
+    def __delitem__(self, key) -> None:
         super(History, self).__delitem__(key)
         self._total -= 1
         self._tail = deque(self, maxlen=1).pop() if len(self) else None
