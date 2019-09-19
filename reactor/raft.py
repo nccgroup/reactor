@@ -451,6 +451,11 @@ class RaftNode(object):
         threading.Thread(target=self.send, name='RAFT-send').start()
         threading.Thread(target=self.listen, name='RAFT-listen').start()
 
+        # If there are no neighbours, immediately elect yourself and sleep until shutdown is called
+        if not self.neighbours:
+            self._handle_inauguration(logger)
+            self.terminate.wait()
+
         while not self.terminate.is_set():
             # Follower
             if self.state == STATE_FOLLOWER:
