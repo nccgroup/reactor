@@ -226,9 +226,9 @@ class RaftNode(object):
         """ Return whether the RaftNode's cluster has an elected leader (including itself). """
         return self.is_leader() or self.leader is not None
 
-    def is_majority(self, count: int) -> bool:
+    def is_majority(self, count: int, strong: bool = True) -> bool:
         """ Return whether the count is a majority of the neighbourhood. """
-        return count >= self.majority
+        return count >= self.majority if len(self.neighbours) % 2 == 0 or not strong else count > self.majority
 
     @property
     def majority(self) -> int:
@@ -515,7 +515,7 @@ class RaftNode(object):
                     t = max(self.changed, neighbour.last_queued, neighbour.last_sent, neighbour.last_recv)
                     if (time.time() - t) > self.election_timeout:
                         not_responding_count += 1
-                if self.is_majority(not_responding_count):
+                if self.is_majority(not_responding_count, False):
                     # Step down as a leader
                     logger.warning('Stepping down as leader: majority lost (%d)', not_responding_count)
                     self.state = STATE_FOLLOWER
