@@ -68,9 +68,9 @@ import statistics
 import struct
 import threading
 import time
-import typing
 
 from collections import OrderedDict, deque
+from typing import Dict, Optional
 
 # By default add the null handler to the library logger
 logging.getLogger('raft').addHandler(logging.NullHandler())
@@ -191,7 +191,7 @@ class RaftNode(object):
         self.changed = 0.0
         self.leader = None
         self.address = address
-        self.neighbours = {n: RaftNeighbour(n) for n in neighbours}  # type: typing.Dict[any, RaftNeighbour]
+        self.neighbours = {n: RaftNeighbour(n) for n in neighbours if n != address}  # type: Dict[tuple, RaftNeighbour]
 
         self.queue = queue.Queue()
         self.elections = dict()
@@ -200,7 +200,7 @@ class RaftNode(object):
         self.heartbeat_timeout = heartbeat_timeout
 
         self.failed_elections = 0
-        self.ssl = None  # type: typing.Optional[dict]
+        self.ssl = None  # type: Optional[dict]
 
         self.execute_called = False
         self.terminate_called = 0
@@ -365,7 +365,7 @@ class RaftNode(object):
 
         client_sock.close()
 
-    def receive_msg(self, sock: socket.socket, msg_len: int) -> typing.Optional[dict]:
+    def receive_msg(self, sock: socket.socket, msg_len: int) -> Optional[dict]:
         """
         Attempt to read a message from `sock` that `msg_len` bytes long.
         :param sock: Socket to read the buffer
