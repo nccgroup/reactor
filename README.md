@@ -66,3 +66,37 @@ To execute the integration tests run the following command:
 ```shell script
 docker-compose -f docker-compose-test.yml up --abort-on-container-exit --build  reactor elasticsearch
 ```
+
+## Create SSL certs for RAFT leadership
+The following set of commands (performed in ``./certs/``) will create a set a CA and device certificate for running the mock cluster on localhost:
+```shell script
+# Only do once: generate the root CA key:
+> openssl genrsa -out transport-ca.key 4096
+
+# Generate the root CA certificate:
+## Country Name (2 letter code) []:GB
+## State or Province Name (full name) []:.
+## Locality Name (eg, city) []:.
+## Organization Name (eg, company) []:.
+## Organizational Unit Name (eg, section) []:.
+## Common Name (eg, fully qualified host name) []:PyRaftLog
+## Email Address []:.
+> openssl req -x509 -new -nodes -key transport-ca.key -sha256 -days 1024 -out transport-ca.pem
+
+# Generate device certificates
+# Only do once: generate device key:
+> openssl genrsa -out transport-consensus.key 4096
+
+# Generate device certificate signing request:
+## Country Name (2 letter code) []:GB
+## State or Province Name (full name) []:.
+## Locality Name (eg, city) []:.
+## Organization Name (eg, company) []:.
+## Organizational Unit Name (eg, section) []:.
+## Common Name (eg, fully qualified host name) []:localhost
+## Email Address []:.
+> openssl req -new -key transport-consensus.key -out transport-consensus.csr
+
+# Generate a signed device certificate:
+> openssl x509 -req -in transport-consensus.csr -CA transport-ca.pem -CAkey transport-ca.key -CAcreateserial -out transport-consensus.crt -days 500 -sha256
+```

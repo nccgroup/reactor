@@ -56,7 +56,7 @@ def parse_config(filename: str, defaults: dict = None, overwrites: dict = None) 
     try:
         config_schema.validate(conf)
     except jsonschema.ValidationError as e:
-        raise reactor.ReactorException("Invalid config file: %s\n%s" % (filename, e))
+        raise reactor.ReactorException('Invalid config file "%s":\n%s' % (filename, e))
 
     # Set mapping defaults
     conf.setdefault('mappings', {})

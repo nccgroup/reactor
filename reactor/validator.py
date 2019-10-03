@@ -20,7 +20,8 @@ def yaml_schema(validator, schema_file: str, relative_file: str = None):
         schema_file = os.path.join(os.path.dirname(relative_file), schema_file)
     base_uri = 'file://%s/' % os.path.dirname(schema_file)
     schema = yaml.safe_load(open(schema_file))
-    return validator(schema, resolver=YamlRefResolver(base_uri, schema))
+    return validator(schema, resolver=YamlRefResolver(base_uri, schema),
+                     format_checker=jsonschema.draft7_format_checker)
 
 
 def extend_with_default(validator_class):

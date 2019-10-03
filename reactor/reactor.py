@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import logging
 import multiprocessing
 import multiprocessing.managers
@@ -17,6 +18,7 @@ import apscheduler.executors.pool
 import croniter
 import elasticsearch.helpers
 import reactor.kibana
+import reactor.raft
 import reactor.rule
 from elasticsearch import Elasticsearch
 from reactor.exceptions import ReactorException, QueryException
@@ -60,8 +62,19 @@ class Reactor(object):
         self.scheduler = apscheduler.schedulers.background.BackgroundScheduler()
         self.terminate_called = 0
         self.core_pid = multiprocessing.current_process().pid
+        self.max_processpool = max(1, min(multiprocessing.cpu_count(), self.conf['max_processpool'] or float('inf')))
 
         self.core = Core(conf, args)
+        self.raft = None
+
+        # Establish a default setting for the cluster
+        self.conf.setdefault('cluster', {'host': 'localhost:7000', 'neighbours': []})
+        self.raft = reactor.raft.RaftNode(tuple(self.conf['cluster']['host'].split(":")),
+                                          [tuple(n.split(":")) for n in self.conf['cluster']['neighbours']])
+        self.raft.meta['cpu_count'] = self.max_processpool
+        self.raft.meta['executing'] = []
+        self.cluster = {'leader': None,
+                        'rules': []}
 
         self._configure_schedule()
 
@@ -77,8 +90,7 @@ class Reactor(object):
         }
         executors = {
             'default': {'type': 'threadpool', 'max_workers': 3},
-            'processpool': apscheduler.executors.pool.ProcessPoolExecutor(
-                max_workers=max(1, multiprocessing.cpu_count() - 1)),
+            'processpool': apscheduler.executors.pool.ProcessPoolExecutor(max_workers=self.max_processpool),
         }
         job_defaults = {
             'coalesce': True,
@@ -88,6 +100,7 @@ class Reactor(object):
                                  executors=executors,
                                  job_defaults=job_defaults)
         self.scheduler.add_listener(self.listen_rule_execution,
+                                    apscheduler.events.EVENT_JOB_SUBMITTED |
                                     apscheduler.events.EVENT_JOB_ERROR |
                                     apscheduler.events.EVENT_JOB_EXECUTED |
                                     apscheduler.events.EVENT_JOB_MAX_INSTANCES)
@@ -131,7 +144,11 @@ class Reactor(object):
             return 1
 
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
-        reactor_logger.info('Starting up')
+        reactor_logger.info('Starting up (max_processpool=%s cluster_size=%s)',
+                            self.max_processpool,  1 + len(self.raft.neighbours))
+
+        # Start the RAFT cluster
+        self.raft.start()
 
         # Add internal jobs to the scheduler
         self.scheduler.add_job(self.handle_pending_alerts, 'interval',
@@ -153,7 +170,7 @@ class Reactor(object):
                 # If the rule have been loaded and every run has been run once
                 if self.loader.loaded and all([r.data.has_run_once for r in self.loader]):
                     reactor_logger.info('Reached end time, shutting down reactor')
-                    self.scheduler.shutdown()
+                    self.stop()
 
             # Briefly sleep
             time.sleep(0.1)
@@ -177,9 +194,12 @@ class Reactor(object):
         """ Stop a running Reactor. """
         if self.running:
             reactor_logger.info('Waiting for running jobs to complete')
+
             self.scheduler.remove_all_jobs('internal')
             self.scheduler.remove_all_jobs('default')
             self.scheduler.shutdown()
+
+            self.raft.shutdown()
 
     def wait_until_responsive(self, timeout: datetime.timedelta):
         """ Wait until ElasticSearch becomes responsive (or too much time passes). """
@@ -218,57 +238,116 @@ class Reactor(object):
         if not self.running:
             return
 
-        # If already loaded and pinned
-        if self.loader.loaded and self.args['pin_rules']:
-            return
-
-        if not self.loader.loaded:
-            reactor_logger.info('Loading rules')
-        else:
-            reactor_logger.debug('Detecting rule changes')
-
-        # Remove rule jobs that have been modified or deleted
-        existing = self.loader.keys()
         try:
-            replaced = self.loader.load(self.args)
+            # If not already loaded or not pinned
+            if not (self.loader.loaded and self.args['pin_rules']):
+                # Load in/detect changes in the rules
+                reactor_logger.log(logging.DEBUG if self.loader.loaded else logging.INFO, 'Loading rules')
+                self.loader.load(self.args)
         except ReactorException as e:
             reactor_logger.error(str(e))
-            return
+        else:
+            # If the leadership of the cluster has changed
+            if self.raft.leader != self.cluster['leader']:
+                self.cluster['leader'] = self.raft.leader
+                if not self.raft.has_leader():
+                    reactor_logger.critical('No cluster leader!')
+                else:
+                    reactor_logger.info('Cluster leader elected: %s', self.raft.leader)
 
-        # Remove removed rules from the scheduler
-        for rule_locator in existing - replaced:
-            self.scheduler.remove_job(job_id=rule_locator)
+            # If we are the leader
+            if self.raft.is_leader():
+                self._distribute_workload()
 
-        # Add/modify rules in the scheduler
-        for rule_locator in replaced:
-            if not self.running:
-                return
+            # Get our list of rules
+            distributed_rules = []
+            if self.raft.has_leader():
+                meta = self.raft.neighbourhood_meta()[self.raft.leader]
+                distributed_rules = meta.get('rules', {}).get(self.raft.address, [])
+            if self.cluster['rules'] != distributed_rules:
+                reactor_logger.info('Rule set updated: %s', distributed_rules)
+            self.cluster['rules'] = distributed_rules
 
-            rule = self.loader[rule_locator]
-            rule.data.initial_start_time = self.start_time if not self.running else rule.data.initial_start_time
+            # Remove removed rules from the scheduler
+            for job in self.scheduler.get_jobs('default'):
+                if job.id not in self.loader or job.id not in distributed_rules:
+                    job.remove()
 
-            # Determine the trigger for this rule
-            trigger = apscheduler.triggers.interval.IntervalTrigger(seconds=rule.run_every.total_seconds(),
-                                                                    jitter=1,
-                                                                    start_date=datetime.datetime.now(),
-                                                                    timezone=pytz.utc)
-            if not self.scheduler.get_job(rule.locator):
-                # Add the rule to the scheduler
-                self.scheduler.add_job(self.core.handle_rule_execution,
-                                       args=[rule],
-                                       id=rule.locator,
-                                       jobstore='default',
-                                       executor='processpool',
-                                       name=rule.name,
-                                       next_run_time=datetime.datetime.now(),
-                                       trigger=trigger)
-            else:
-                # Add the rule to the scheduler
-                self.scheduler.modify_job(job_id=rule.locator,
-                                          jobstore='default',
-                                          args=[rule],
-                                          name=rule.name,
-                                          trigger=trigger)
+            # Add/modify rules in the scheduler
+            for rule_locator in distributed_rules:
+                if not self.running or rule_locator not in self.loader:
+                    # TODO: rule_locator should always be in self.loader
+                    continue
+
+                rule = self.loader[rule_locator]
+                rule.data.initial_start_time = self.start_time if not self.running else rule.data.initial_start_time
+
+                # Determine the trigger for this rule
+                trigger = apscheduler.triggers.interval.IntervalTrigger(seconds=rule.run_every.total_seconds(),
+                                                                        jitter=1,
+                                                                        start_date=datetime.datetime.now(),
+                                                                        timezone=pytz.utc)
+                if not self.scheduler.get_job(rule.locator):
+                    # Add the rule to the scheduler
+                    self.scheduler.add_job(self.core.handle_rule_execution,
+                                           args=[rule],
+                                           id=rule.locator,
+                                           jobstore='default',
+                                           executor='processpool',
+                                           name=rule.name,
+                                           next_run_time=datetime.datetime.now(),
+                                           trigger=trigger)
+                else:
+                    # Add the rule to the scheduler
+                    self.scheduler.modify_job(job_id=rule.locator,
+                                              jobstore='default',
+                                              args=[rule],
+                                              name=rule.name,
+                                              trigger=trigger)
+
+    def _distribute_workload(self):
+        """
+        Devise how the rules should be distributed across the cluster. The distribution should be a dictionary
+        mapping of cluster node addresses to a list of rule locators. The distribution should then be stored in
+        ``self.raft.meta['rules']``, e.g.:
+
+
+            self.raft.meta['rules'] = {('node1', 7000): ['rule_locator1', 'rule_locator2'],
+                                       ('node2', 7000): ['rule_locator3'],
+                                       ('node3', 7000): ['rule_locator4']}
+        """
+        # If all nodes in the cluster have reported in their cpu_count (they do this every message)
+        if all(['cpu_count' in n.meta for n in self.raft.neighbours.values()]):
+            # Determine worker pool
+            workers = [self.raft.address] * self.raft.meta['cpu_count']
+            for neighbour in self.raft.neighbours.values():
+                # TODO: handle the case where not all neighbours have reported their cpu_count
+                workers.extend([neighbour.address] * neighbour.meta['cpu_count'])
+            worker_pool = itertools.cycle(sorted(workers))
+            # Distribute the rules across the cluster
+            distribution = {}
+            for rule in sorted(self.loader, key=lambda r: r.locator):
+                node = next(worker_pool)
+                distribution.setdefault(node, [])
+                distribution[node].append(rule.locator)
+            # Round robin rules that are assigned to disconnected workers
+            unavailable = [n.address for n in self.raft.neighbours.values() if n.failed_count > 0]
+            for neighbour in unavailable:
+                while len(distribution[neighbour]):
+                    rule = distribution[neighbour].pop()
+                    node = next(worker_pool)
+                    while node in unavailable:
+                        node = next(worker_pool)
+                    distribution[node].append(rule)
+            available = [n.address for n in self.raft.neighbours.values() if n.failed_count == 0]
+            # Remove any that are being run by another node other than they are assigned
+            for neighbour in available:
+                for rule_locator in self.raft.neighbours[neighbour].meta['executing']:
+                    for node in distribution:
+                        if node != neighbour and rule_locator in distribution[node]:
+                            distribution[node].remove(rule_locator)
+
+            self.raft.meta['rules'] = distribution
 
     def silence(self, rule: Rule, duration: datetime.timedelta, revoke: bool = False):
         """ Silence an alert for a period of time. --silence and --rule must be passed as args. """
@@ -277,20 +356,6 @@ class Reactor(object):
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         if self.core.set_realert(rule, '_silence', dt_now() + duration, 0):
             reactor_logger.warning('Silenced rule %s for %s', rule.name, duration)
-
-    def handle_uncaught_exception(self, exception, rule):
-        """ Disables a rule and sends a notification. """
-        # reactor_logger.error(traceback.format_exc())
-        self.core.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
-
-        if rule.conf('disable_rule_on_error'):
-            self.loader.disable(rule.locator)
-            if self.running and self.scheduler.get_job(job_id=rule.locator):
-                self.scheduler.remove_job(job_id=rule.locator)
-            reactor_logger.info('Rule "%s" disabled', rule.name)
-        # TODO: add notification
-        # if self.notify_email:
-        #     self.send_notification()
 
     def listen_rule_execution(self, event):
         """ Listener of events from handler rule execution. """
@@ -306,6 +371,11 @@ class Reactor(object):
             reactor_logger.warning('Execution time for "%s" longer than run_every (%s)', rule.name, rule.run_every)
             return
 
+        # If the rule was submitted to the executor to be run, add the rule to the list of executing rules
+        if event.code == apscheduler.events.EVENT_JOB_SUBMITTED:
+            self.raft.meta['executing'].append(event.job_id)
+            return
+
         # If there was an uncaught exception raised
         if event.code == apscheduler.events.EVENT_JOB_ERROR:
             self.handle_uncaught_exception(event.exception, rule)
@@ -314,22 +384,38 @@ class Reactor(object):
         elif event.code == apscheduler.events.EVENT_JOB_EXECUTED:
             rule.data = event.retval
 
+        # Remove the rule from the list of executing rules
+        if event.job_id in self.raft.meta['executing']:
+            self.raft.meta['executing'].remove(event.job_id)
+
         # Apply rules based on execution time limits
         self.reset_rule_schedule(rule)
         rule.data.next_start_time = None
         rule.data.next_min_start_time = None
 
+    def handle_uncaught_exception(self, exception, rule):
+        """ Disables a rule and sends a notification. """
+        # reactor_logger.error(traceback.format_exc())
+        self.core.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
+
+        if rule.conf('disable_rule_on_error'):
+            self.loader.disable(rule.locator)
+            if self.running and self.scheduler.get_job(job_id=rule.locator):
+                self.scheduler.remove_job(job_id=rule.locator)
+            reactor_logger.info('Rule "%s" disabled', rule.name)
+        # TODO: add notification
+        # if self.conf['notify_email']:
+        #     self.send_notification_email(self.conf['notify_email'], exception=exception, rule=rule)
+
 
 class Core(object):
     thread_data = threading.local()
 
-    # def __init__(self, conf: dict, args: dict, scheduler):
     def __init__(self, conf: dict, args: dict):
         self.mode = args.get('mode', 'default')
         self.conf = conf
         self.args = args
         self.loader = conf['loader']  # type: reactor.loader.RuleLoader
-        # self.scheduler = scheduler
 
         self.es_client = elasticsearch_client(conf['elasticsearch'])
         self.writeback_index = conf['index']
@@ -911,7 +997,6 @@ class Core(object):
                 if now - timestamp > buffer_time:
                     stale_silences.append(_id)
                     stale_alerts.append(alert_uuid)
-                    # TODO: Run a final update on the silenced alert
             list(map(rule.data.silence_cache.pop, stale_silences))
             list(map(rule.data.alerts_cache.pop, stale_alerts, [None] * len(stale_alerts)))
 
@@ -1119,7 +1204,7 @@ class Core(object):
         else:
             # old_start_time = pretty_ts(rule.data.original_start_time, rule.conf('use_local_time'))
             old_start_time = pretty_ts(rule.data.start_time, rule.conf('use_local_time'))
-            reactor_logger.log(logging.INFO if rule.data.alerts_sent else logging.DEBUG,
+            reactor_logger.log(logging.INFO, # if rule.data.alerts_sent else logging.DEBUG,
                                'Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                '%s alerts sent (%s silenced)',
                                old_start_time, pretty_ts(end_time, rule.conf('use_local_time')), rule.name,

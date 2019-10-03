@@ -1,6 +1,8 @@
 import argparse
+import logging
 import signal
 import sys
+import traceback
 
 from reactor.alerter import TestAlerter
 from reactor.config import parse_config
@@ -275,7 +277,7 @@ def perform_hits(config: dict, args: dict) -> int:
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = reactor.run_query(rule, start_time, end_time)
+            hits = reactor.core.run_query(rule, start_time, end_time)
             alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
@@ -304,6 +306,9 @@ def perform_silence(config: dict, args: dict) -> int:
 
 def main(args):
     signal.signal(signal.SIGINT, handle_signal)
+
+    # Silence the APScheduler logs
+    logging.getLogger('apscheduler').addHandler(logging.NullHandler())
 
     parser, args = parse_args(args)
     if args['action'] is None:
@@ -348,9 +353,8 @@ def main(args):
             exit_code = reactor.start()
 
     except Exception as e:
-        print('Raised exception %s: %s' % (type(e), e))
-        import traceback
-        traceback.print_exc()
+        reactor_logger.fatal(str(e))
+        reactor_logger.debug(traceback.format_exc())
         return 1
 
     else:

@@ -4,6 +4,7 @@ import logging
 import os
 import pytz
 import re
+import sys
 import time
 import uuid
 
@@ -15,9 +16,12 @@ import yaml
 import reactor.auth
 from reactor.exceptions import ReactorException
 
-logging.basicConfig(format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
 reactor_logger = logging.getLogger('reactor')
 reactor_logger.setLevel(logging.INFO)
+ch = logging.StreamHandler(sys.stderr)
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+ch.setFormatter(formatter)
+reactor_logger.addHandler(ch)
 
 
 class ElasticSearchClient(elasticsearch.Elasticsearch):

@@ -20,6 +20,28 @@ properties:
     type: integer
     title: "Maximum number of writeback actions to cache before flushing"
     default: 1000
+  max_processpool:
+    type: integer
+    title: "Maximum number of processes to run rules in (capped between 1 and CPU count)"
+    default: 0
+    minimium: 0
+  cluster:
+    title: "Settings for a cluster of Reactor nodes"
+    type: object
+    additional_properties: false
+    required: [host, neighbours]
+    properties:
+      host:
+        title: "Hostname that other cluster members will use to connect"
+        type: string
+        pattern: '^[A-Za-z0-9][A-Za-z0-9\.\-]{1,255}:[0-9]+$'
+      neighbours:
+        title: "List of neighbour host names"
+        type: array
+        items:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9\.\-]{1,255}:[0-9]+$'
+
 
   alert_time_limit:
     default: {days: 2}

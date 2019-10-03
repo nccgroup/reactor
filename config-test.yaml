@@ -1,5 +1,6 @@
 index: reactor
 alert_alias: reactor_alerts
+max_processpool: 1
 
 # ElasticSearch cluster to connect
 elasticsearch: &elasticsearch
