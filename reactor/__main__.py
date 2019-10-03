@@ -2,6 +2,7 @@ import argparse
 import logging
 import signal
 import sys
+import traceback
 
 from reactor.alerter import TestAlerter
 from reactor.config import parse_config
@@ -352,9 +353,8 @@ def main(args):
             exit_code = reactor.start()
 
     except Exception as e:
-        print('Raised exception %s: %s' % (type(e), e))
-        import traceback
-        traceback.print_exc()
+        reactor_logger.fatal(str(e))
+        reactor_logger.debug(traceback.format_exc())
         return 1
 
     else:
