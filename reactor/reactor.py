@@ -170,7 +170,7 @@ class Reactor(object):
                 # If the rule have been loaded and every run has been run once
                 if self.loader.loaded and all([r.data.has_run_once for r in self.loader]):
                     reactor_logger.info('Reached end time, shutting down reactor')
-                    self.scheduler.shutdown()
+                    self.stop()
 
             # Briefly sleep
             time.sleep(0.1)
@@ -404,8 +404,8 @@ class Reactor(object):
                 self.scheduler.remove_job(job_id=rule.locator)
             reactor_logger.info('Rule "%s" disabled', rule.name)
         # TODO: add notification
-        if self.conf['notify_email']:
-            self.send_notification_email(self.conf['notify_email'], exception=exception, rule=rule)
+        # if self.conf['notify_email']:
+        #     self.send_notification_email(self.conf['notify_email'], exception=exception, rule=rule)
 
 
 class Core(object):
