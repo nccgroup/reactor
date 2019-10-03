@@ -236,9 +236,9 @@ class RaftNode(object):
         return math.ceil((len(self.neighbours)+1)/2)
 
     @property
-    def neighbourhood(self) -> int:
-        """ Number of nodes in the network. """
-        return len(self.neighbours) + 1
+    def neighbourhood(self) -> list:
+        """ List of addresses in the neighbourhood. """
+        return [self.address] + list(self.neighbours.keys())
 
     @property
     def meta(self) -> dict:
@@ -530,6 +530,11 @@ class RaftNode(object):
 
         self.execute_called = False
 
+    def start(self) -> None:
+        """ Start RAFT execution in a thread. """
+        thread = threading.Thread(target=self.execute, name='RAFT-execute')
+        thread.start()
+
     def shutdown(self) -> None:
         """ Set the terminate flag and increment """
         logger = logging.getLogger('raft')
@@ -607,6 +612,7 @@ class RaftNode(object):
         self.state = STATE_LEADER
         self.timeout_time = time.time()
         self.failed_elections = 0
+        self.leader = self.address
         for neighbour in self.neighbours.values():
             neighbour.contacted = False
         logger.warning('Elected leader %s', self.term)

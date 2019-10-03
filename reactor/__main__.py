@@ -1,4 +1,5 @@
 import argparse
+import logging
 import signal
 import sys
 
@@ -275,7 +276,7 @@ def perform_hits(config: dict, args: dict) -> int:
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = reactor.run_query(rule, start_time, end_time)
+            hits = reactor.core.run_query(rule, start_time, end_time)
             alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
@@ -304,6 +305,9 @@ def perform_silence(config: dict, args: dict) -> int:
 
 def main(args):
     signal.signal(signal.SIGINT, handle_signal)
+
+    # Silence the APScheduler logs
+    logging.getLogger('apscheduler').addHandler(logging.NullHandler())
 
     parser, args = parse_args(args)
     if args['action'] is None:
