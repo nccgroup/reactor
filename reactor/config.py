@@ -35,6 +35,11 @@ default_mappings = {
         'metric_aggregation': reactor.rule.MetricAggregationRule,
         'percentage_match': reactor.rule.PercentageMatchRule,
     },
+
+    # Default notifiers
+    'notifier': {
+        'email': reactor.notifier.EmailNotifier,
+    },
 }
 
 
