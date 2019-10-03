@@ -966,7 +966,8 @@ class Core(object):
             # There was an exception while querying
             if data is None:
                 return []
-            elif data:
+
+            try:
                 if rule.conf('use_count_query'):
                     yield from rule.add_count_data(data)
                 elif rule.conf('use_terms_query'):
@@ -975,6 +976,8 @@ class Core(object):
                     yield from rule.add_aggregation_data(data)
                 else:
                     yield from rule.add_hits_data(data)
+            except AttributeError as e:
+                raise reactor.exceptions.ConfigException(str(e))
 
             # We are complete if we don't have a scroll id or num of hits is equal to total hits
             complete = not (rule.data.scroll_id and rule.data.num_hits < rule.data.total_hits)
