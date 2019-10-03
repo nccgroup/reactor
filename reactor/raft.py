@@ -295,7 +295,7 @@ class RaftNode(object):
         sock = self._wrap_socket(sock)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        sock.bind(self.address)
+        sock.bind((self.address[0], int(self.address[1])))
         sock.settimeout(self.SOCKET_TIMEOUT)
         sock.listen(len(self.neighbours))
 
@@ -346,7 +346,6 @@ class RaftNode(object):
             logger.debug('Recv %s', _rpc_str(msg))
 
             self.neighbours[msg['sender']].append_recv(msg)
-            self.neighbours[msg['sender']].meta = msg['meta']
             # handle message
             if msg['term'] > self.term:
                 self.state = STATE_FOLLOWER
@@ -400,6 +399,7 @@ class RaftNode(object):
                 msg['term'] = self.term
                 msg['sender'] = self.address
                 msg['meta'] = self.meta
+                msg['state'] = self.state
 
                 if recipient not in pool:
                     sock = socket.create_connection(recipient)
@@ -490,6 +490,8 @@ class RaftNode(object):
                         neighbour.contacted = True
                         msg = _rpc_request(RPC_APPEND_ENTRIES, self.term, neighbour.address)
                         self.queue_msg(msg)
+                    elif neighbour.contacted and time.time() > heartbeat_timeout:
+                        neighbour.failed_count += 1
 
                 # Output ping information
                 if time.time() > self.timeout_time:
@@ -542,7 +544,7 @@ class RaftNode(object):
     def _handle_connection_failure(self, msg: dict, logger: logging.Logger) -> None:
         """ Handles connection failure to ``msg`` recipient. """
         recipient = msg['recipient']
-        if msg is not None and recipient is not None:
+        if msg is not None:
             if self.neighbours[recipient].failed_count == 0:
                 logger.warning('Connection error %s', recipient)
             else:
@@ -566,7 +568,7 @@ class RaftNode(object):
     def _handle_rpc_vote_request(self, msg, logger: logging.Logger):
         """ Handles RPC ``VOTE_REQUEST``. """
         # If the vote is from an old term or we are a candidate
-        if msg['term'] < self.term or self.state == STATE_CANDIDATE:
+        if msg['term'] < self.term or self.state in {STATE_CANDIDATE, STATE_LEADER}:
             response = False
             self.queue_msg(_rpc_response(msg, self.term, response))
 
@@ -589,6 +591,9 @@ class RaftNode(object):
         if msg['term'] not in self.elections:
             self.elections[msg['term']] = dict()
         self.elections[msg['term']][msg['sender']] = msg['response']
+
+        if msg['state'] == STATE_LEADER:
+            self.timeout_time = _next_timeout(STATE_FOLLOWER, 0, self.election_timeout, self.heartbeat_timeout)
 
         if self.state != STATE_CANDIDATE:
             return
@@ -640,8 +645,13 @@ class RaftNeighbour(object):
 
     def append_recv(self, msg: dict) -> None:
         """ Append a message to the received history, update term, reset `failed_count`, and calculate ping. """
+        if self.failed_count > 0:
+            while self.queued.tail and self.awaiting_res():
+                del self.queued[self.queued.tail]
+
         self.recv[msg['id']] = time.time()
         self.term = msg['term']
+        self.meta = msg['meta']
         self.failed_count = 0
         if msg['id'] in self.sent:
             self.ping.append(self.recv[msg['id']] - self.sent[msg['id']])
