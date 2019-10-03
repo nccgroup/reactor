@@ -411,13 +411,11 @@ class Reactor(object):
 class Core(object):
     thread_data = threading.local()
 
-    # def __init__(self, conf: dict, args: dict, scheduler):
     def __init__(self, conf: dict, args: dict):
         self.mode = args.get('mode', 'default')
         self.conf = conf
         self.args = args
         self.loader = conf['loader']  # type: reactor.loader.RuleLoader
-        # self.scheduler = scheduler
 
         self.es_client = elasticsearch_client(conf['elasticsearch'])
         self.writeback_index = conf['index']
