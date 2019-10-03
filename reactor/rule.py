@@ -775,7 +775,7 @@ class Rule(object):
         return dots_get(pair[0], self._data.ts_field)
 
 
-class AnyRule(Rule, AcceptsHitsDataMixin):
+class AnyRule(AcceptsHitsDataMixin, Rule):
     rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-any.yaml', __file__)
 
     """ A rule that will match on any input data. """
@@ -789,7 +789,7 @@ class AnyRule(Rule, AcceptsHitsDataMixin):
             yield self.add_match(extra, event)
 
 
-class CompareRule(Rule, AcceptsHitsDataMixin):
+class CompareRule(AcceptsHitsDataMixin, Rule):
     """ A base class for matching a specific term by passing it to a compare function. """
     required_options = frozenset(['compound_compare_key'])
 
@@ -949,7 +949,7 @@ class ChangeRule(CompareRule):
         return extra, event
 
 
-class FrequencyRule(Rule, AcceptsHitsDataMixin, AcceptsCountDataMixin, AcceptsTermsDataMixin):
+class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that matches if num_events number of events occur within a timeframe. """
     required_options = frozenset(['num_events', 'timeframe'])
 
@@ -1127,7 +1127,7 @@ class FlatlineRule(FrequencyRule):
             yield from self.check_for_match(key, end=True)
 
 
-class SpikeRule(Rule, AcceptsHitsDataMixin, AcceptsCountDataMixin, AcceptsTermsDataMixin):
+class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that uses two sliding windows to compare relative event frequency. """
     required_options = frozenset(['timeframe', 'spike_height', 'spike_type'])
 
@@ -1294,7 +1294,7 @@ class SpikeRule(Rule, AcceptsHitsDataMixin, AcceptsCountDataMixin, AcceptsTermsD
                 yield from self.handle_event(event, count, key)
 
 
-class NewTermRule(Rule, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
+class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
     rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-new_term.yaml', __file__)
 
     """ A Rule that detects a new value in a list of fields. """
@@ -1556,7 +1556,7 @@ class NewTermRule(Rule, AcceptsHitsDataMixin, AcceptsTermsDataMixin):
                         yield self.add_match(*self.generate_match(field, bucket['key'], timestamp=timestamp))
 
 
-class CardinalityRule(Rule, AcceptsHitsDataMixin):
+class CardinalityRule(AcceptsHitsDataMixin, Rule):
     """ A Rule that matches if cardinality of a field is above or below a threshold within a timeframe. """
     required_options = frozenset(['timeframe', 'cardinality_field'])
 
@@ -1639,7 +1639,7 @@ class CardinalityRule(Rule, AcceptsHitsDataMixin):
                 yield from self.check_for_match(qk, event, False)
 
 
-class BaseAggregationRule(Rule, AcceptsAggregationDataMixin):
+class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
     allowed_aggregations = frozenset(['min', 'max', 'avg', 'sum', 'cardinality', 'value_count'])
 
     def __init__(self, locator: str, hash: str, conf: dict):
@@ -1773,7 +1773,7 @@ class MetricAggregationRule(BaseAggregationRule):
         return False
 
 
-class SpikeMetricAggregationRule(BaseAggregationRule, SpikeRule):
+class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
     """ A rule that matches when there is a spike in an aggregated event compared to its reference window, """
 
     rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-spike_metric_aggregation.yaml', __file__)
