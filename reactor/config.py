@@ -35,6 +35,11 @@ default_mappings = {
         'metric_aggregation': reactor.rule.MetricAggregationRule,
         'percentage_match': reactor.rule.PercentageMatchRule,
     },
+
+    # Default plugin types
+    'plugin': {
+        'http_server': reactor.plugin.HttpServerPlugin,
+    },
 }
 
 

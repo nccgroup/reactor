@@ -3,8 +3,6 @@ import itertools
 import logging
 import multiprocessing
 import multiprocessing.managers
-import pytz
-import secrets
 import sys
 import threading
 import time
@@ -12,15 +10,17 @@ import traceback
 from typing import Optional
 
 import apscheduler.events
+import apscheduler.executors.pool
 import apscheduler.schedulers.background
 import apscheduler.triggers.interval
-import apscheduler.executors.pool
 import croniter
 import elasticsearch.helpers
+import pytz
+from elasticsearch import Elasticsearch
+
 import reactor.kibana
 import reactor.raft
 import reactor.rule
-from elasticsearch import Elasticsearch
 from reactor.exceptions import ReactorException, QueryException
 from reactor.loader import Rule, RuleLoader
 from reactor.util import (
@@ -29,8 +29,6 @@ from reactor.util import (
     dots_get,
     elasticsearch_client,
 )
-
-_authkey = secrets.token_urlsafe(32)
 
 
 class Reactor(object):
@@ -72,7 +70,7 @@ class Reactor(object):
         self.raft = reactor.raft.RaftNode(tuple(self.conf['cluster']['host'].split(":")),
                                           [tuple(n.split(":")) for n in self.conf['cluster']['neighbours']])
         self.raft.meta['cpu_count'] = self.max_processpool
-        self.raft.meta['executing'] = []
+        self.raft.meta['executing'] = set()
         self.cluster = {'leader': None,
                         'rules': []}
 
@@ -101,9 +99,10 @@ class Reactor(object):
                                  job_defaults=job_defaults)
         self.scheduler.add_listener(self.listen_rule_execution,
                                     apscheduler.events.EVENT_JOB_SUBMITTED |
-                                    apscheduler.events.EVENT_JOB_ERROR |
+                                    apscheduler.events.EVENT_JOB_MAX_INSTANCES |
                                     apscheduler.events.EVENT_JOB_EXECUTED |
-                                    apscheduler.events.EVENT_JOB_MAX_INSTANCES)
+                                    apscheduler.events.EVENT_JOB_ERROR |
+                                    apscheduler.events.EVENT_JOB_MISSED)
 
     def reset_rule_schedule(self, rule: Rule):
         # We hit the end of an execution schedule, pause ourselves until next run
@@ -184,7 +183,10 @@ class Reactor(object):
 
         if self.terminate_called >= self.MAX_TERMINATE_CALLED:
             reactor_logger.critical('Terminating reactor')
-            sys.exit(signal_num)
+            try:
+                sys.exit(signal_num)
+            except Exception as e:
+                raise ReactorException(str(e))
 
         elif self.core_pid == multiprocessing.current_process().pid:
             reactor_logger.info('Attempting normal shutdown')
@@ -193,13 +195,17 @@ class Reactor(object):
     def stop(self):
         """ Stop a running Reactor. """
         if self.running:
-            reactor_logger.info('Waiting for running jobs to complete')
 
-            self.scheduler.remove_all_jobs('internal')
-            self.scheduler.remove_all_jobs('default')
+            reactor_logger.info('Waiting for raft to shutdown')
+            self.raft.shutdown()
+
+            reactor_logger.info('Removing jobs from scheduler')
+            self.scheduler.remove_all_jobs()
+
+            reactor_logger.info('Waiting for running jobs to complete (%s)' % len(self.raft.meta['executing']))
             self.scheduler.shutdown()
 
-            self.raft.shutdown()
+            reactor_logger.info('Shutdown complete!')
 
     def wait_until_responsive(self, timeout: datetime.timedelta):
         """ Wait until ElasticSearch becomes responsive (or too much time passes). """
@@ -235,7 +241,7 @@ class Reactor(object):
             reactor_logger.info('Sent %s pending alerts at %s', alerts_sent, pretty_ts(dt_now()))
 
     def handle_config_changes(self):
-        if not self.running:
+        if not self.running or self.terminate_called > 0:
             return
 
         try:
@@ -275,7 +281,7 @@ class Reactor(object):
 
             # Add/modify rules in the scheduler
             for rule_locator in distributed_rules:
-                if not self.running or rule_locator not in self.loader:
+                if not self.running or self.terminate_called > 0 or rule_locator not in self.loader:
                     # TODO: rule_locator should always be in self.loader
                     continue
 
@@ -373,7 +379,7 @@ class Reactor(object):
 
         # If the rule was submitted to the executor to be run, add the rule to the list of executing rules
         if event.code == apscheduler.events.EVENT_JOB_SUBMITTED:
-            self.raft.meta['executing'].append(event.job_id)
+            self.raft.meta['executing'].add(event.job_id)
             return
 
         # If there was an uncaught exception raised

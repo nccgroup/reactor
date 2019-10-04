@@ -3,19 +3,20 @@ import datetime
 import hashlib
 import os
 import typing
-import yaml
+from typing import List, Optional, Iterator
 
 import jsonschema
+import yaml
+
 import reactor.enhancement
-from typing import List, Optional, Iterator
 from reactor.exceptions import ReactorException, ConfigException
+from reactor.rule import Rule
 from reactor.util import (
     reactor_logger,
     load_yaml,
     import_class
 )
 from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
-from reactor.rule import Rule
 
 
 class RuleLoader(object):
@@ -45,6 +46,9 @@ class RuleLoader(object):
 
     def __getitem__(self, item):
         return self.rules[item]
+
+    def __len__(self):
+        return len(self.rules)
 
     def keys(self):
         return self.rules.keys()

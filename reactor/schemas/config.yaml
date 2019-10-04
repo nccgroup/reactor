@@ -150,4 +150,17 @@ properties:
         default: {}
         additionalProperties:
           type: string
+
+      plugin:
+        title: "Lookup dictionary of human name to Plugin"
+        type: object
+        default: {}
+        additionalProperties:
+          type: string
+
+
+  plugins:
+    type: object
+    title: "Set of plugins to be run alongside Reactor"
+    default: {}
 ...
