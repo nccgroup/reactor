@@ -40,6 +40,11 @@ default_mappings = {
     'notifier': {
         'email': reactor.notifier.EmailNotifier,
     },
+
+    # Default plugin types
+    'plugin': {
+        'http_server': reactor.plugin.HttpServerPlugin,
+    },
 }
 
 

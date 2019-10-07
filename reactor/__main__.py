@@ -4,9 +4,12 @@ import signal
 import sys
 import traceback
 
+import urllib3
+
+import reactor.plugin as reactor_plugin
 from reactor.alerter import TestAlerter
 from reactor.config import parse_config
-from reactor.exceptions import ReactorException
+from reactor.exceptions import ReactorException, ConfigException
 from reactor.reactor import Reactor
 from reactor.util import (
     parse_duration,
@@ -15,10 +18,10 @@ from reactor.util import (
     elasticsearch_client,
     dt_now,
     reactor_logger,
-    pretty_ts
+    pretty_ts,
+    import_class,
 )
 
-import urllib3
 urllib3.disable_warnings()
 
 
@@ -304,6 +307,31 @@ def perform_silence(config: dict, args: dict) -> int:
     return 0
 
 
+def perform_run(config: dict, args: dict) -> int:
+    # Create the reactor
+    reactor = Reactor(config, args)
+    signal.signal(signal.SIGINT, reactor.terminate)
+
+    # Start the plugins
+    plugins = {}
+    for plugin_type in config['plugins']:
+        plugin_conf = config['plugins'][plugin_type]
+        plugin_class = import_class(plugin_type, config['mappings']['plugin'], reactor_plugin)
+        if not issubclass(plugin_class, reactor_plugin.BasePlugin):
+            raise ConfigException('Plugin type %s not a subclass of BasePlugin' % plugin_class)
+        plugins[plugin_type] = plugin_class(reactor, plugin_conf)
+        plugins[plugin_type].start()
+
+    # Start reactor
+    exit_code = reactor.start()
+
+    # Shutdown the plugins
+    for plugin in plugins.values():
+        plugin.shutdown()
+
+    return exit_code
+
+
 def main(args):
     signal.signal(signal.SIGINT, handle_signal)
 
@@ -348,9 +376,7 @@ def main(args):
 
         # Run Reactor
         else:
-            reactor = Reactor(config, args)
-            signal.signal(signal.SIGINT, reactor.terminate)
-            exit_code = reactor.start()
+            exit_code = perform_run(config, args)
 
     except Exception as e:
         reactor_logger.fatal(str(e))

@@ -9,6 +9,7 @@ from .enhancement import AlertEnhancement, MatchEnhancement, DropException
 from .exceptions import *
 from .loader import Rule, RuleLoader, FileRuleLoader
 from .notifier import EmailNotifier
+from .plugin import BasePlugin, HttpServerPlugin
 from .reactor import Reactor
 from .rule import Rule
 from .rule import (

@@ -59,8 +59,8 @@ should, for this reason, be kept to a minimum and used only to share important, 
 import hashlib
 import logging
 import math
-import queue
 import pickle
+import queue
 import random
 import socket
 import ssl
@@ -68,7 +68,6 @@ import statistics
 import struct
 import threading
 import time
-
 from collections import OrderedDict, deque
 from typing import Dict, Optional
 
@@ -202,6 +201,7 @@ class RaftNode(object):
         self.failed_elections = 0
         self.ssl = None  # type: Optional[dict]
 
+        self._threads = []
         self.execute_called = False
         self.terminate_called = 0
 
@@ -247,6 +247,10 @@ class RaftNode(object):
         """
         return self._meta
 
+    @staticmethod
+    def addr_to_str(addr: tuple = None):
+        return ':'.join(addr) if addr else None
+
     def neighbourhood_meta(self) -> dict:
         """ Returns a mapping of node address to meta data. """
         joint_meta = {n.address: n.meta for n in self.neighbours.values()}
@@ -289,6 +293,15 @@ class RaftNode(object):
                                    server_side=server_side,
                                    server_hostname=server_hostname)
 
+    def _start_thread(self, *args, **kwargs):
+        """
+        Create a ``threading.Thread`` using ``*args`` and ``**kwargs``, append it to an internal list of threads, and
+        then immediately start the thread.
+        """
+        thread = threading.Thread(*args, **kwargs)
+        self._threads.append(thread)
+        thread.start()
+
     def listen(self) -> None:
         """ Thread function to accept incoming connections from neighbouring RAFT nodes. """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -305,8 +318,8 @@ class RaftNode(object):
             try:
                 (client_sock, address) = sock.accept()
 
-                threading.Thread(target=self.receive, args=(client_sock,),
-                                 name='RAFT-receive', daemon=True).start()
+                self._start_thread(target=self.receive, args=(client_sock,),
+                                   name='RAFT-receive', daemon=True).start()
             except socket.timeout:
                 continue
             except ssl.SSLError as e:
@@ -448,8 +461,8 @@ class RaftNode(object):
         self.terminate.clear()
         logger.info('Starting up %s', self.address)
         self.timeout_time = _next_timeout(STATE_FOLLOWER, 0, self.election_timeout, self.heartbeat_timeout)
-        threading.Thread(target=self.send, name='RAFT-send').start()
-        threading.Thread(target=self.listen, name='RAFT-listen').start()
+        self._start_thread(target=self.send, name='RAFT-send')
+        self._start_thread(target=self.listen, name='RAFT-listen')
 
         # If there are no neighbours, immediately elect yourself and sleep until shutdown is called
         if not self.neighbours:
@@ -532,10 +545,9 @@ class RaftNode(object):
 
     def start(self) -> None:
         """ Start RAFT execution in a thread. """
-        thread = threading.Thread(target=self.execute, name='RAFT-execute')
-        thread.start()
+        self._start_thread(target=self.execute, name='RAFT-execute')
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout: int = None) -> None:
         """ Set the terminate flag and increment """
         logger = logging.getLogger('raft')
         self.terminate_called += 1
@@ -545,6 +557,9 @@ class RaftNode(object):
             raise RaftException()
         else:
             logger.info('Attempting normal shutdown')
+
+        for thread in self._threads:
+            thread.join(timeout)
 
     def _handle_connection_failure(self, msg: dict, logger: logging.Logger) -> None:
         """ Handles connection failure to ``msg`` recipient. """
