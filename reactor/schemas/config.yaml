@@ -150,4 +150,18 @@ properties:
         default: {}
         additionalProperties:
           type: string
+
+      notifier:
+        title: "Lookup dictionary of human name to Notifier"
+        type: object
+        default: {}
+        additionalProperties:
+          type: string
+
+
+  notifiers:
+    type: object
+    title: "Set of notifiers to be fired on uncaught exceptions being raise"
+    additionalProperties:
+      type: object
 ...

@@ -8,6 +8,7 @@ from .auth import Auth
 from .enhancement import AlertEnhancement, MatchEnhancement, DropException
 from .exceptions import *
 from .loader import Rule, RuleLoader, FileRuleLoader
+from .notifier import EmailNotifier
 from .reactor import Reactor
 from .rule import Rule
 from .rule import (
