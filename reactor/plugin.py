@@ -1,6 +1,7 @@
 import http.server
 import json
 import logging
+import socketserver
 import ssl
 import threading
 import time
@@ -37,7 +38,8 @@ class HttpServerPlugin(BasePlugin):
     """
     HTTP Server plugin provides a web server with a single endpoint to return basic health check against.
     """
-    class Server(http.server.ThreadingHTTPServer):
+    class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
         reactor = None
 
     class Handler(http.server.BaseHTTPRequestHandler):
