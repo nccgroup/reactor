@@ -163,4 +163,6 @@ properties:
     type: object
     title: "Set of plugins to be run alongside Reactor"
     default: {}
+    additionalProperties:
+      type: object
 ...
