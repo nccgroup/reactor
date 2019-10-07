@@ -28,6 +28,7 @@ from reactor.util import (
     dt_now, dt_to_ts, ts_to_dt, unix_to_dt, dt_to_unix, pretty_ts,
     dots_get,
     elasticsearch_client,
+    import_class,
 )
 
 
@@ -327,7 +328,6 @@ class Reactor(object):
             # Determine worker pool
             workers = [self.raft.address] * self.raft.meta['cpu_count']
             for neighbour in self.raft.neighbours.values():
-                # TODO: handle the case where not all neighbours have reported their cpu_count
                 workers.extend([neighbour.address] * neighbour.meta['cpu_count'])
             worker_pool = itertools.cycle(sorted(workers))
             # Distribute the rules across the cluster
@@ -409,9 +409,31 @@ class Reactor(object):
             if self.running and self.scheduler.get_job(job_id=rule.locator):
                 self.scheduler.remove_job(job_id=rule.locator)
             reactor_logger.info('Rule "%s" disabled', rule.name)
-        # TODO: add notification
-        # if self.conf['notify_email']:
-        #     self.send_notification_email(self.conf['notify_email'], exception=exception, rule=rule)
+        if self.conf['notifiers']:
+            self.send_notification(exception=exception, rule=rule)
+
+    def send_notification(self, body='', exception=None, rule=None, subject=None, rule_file=None):
+        """ Send a notification via all configured notifiers. """
+        subject = subject or'Reactor notification'
+        rule_name = None
+        if rule:
+            rule_name = rule['name']
+        elif rule_file:
+            rule_name = rule_file
+        if exception and rule_name:
+            if not subject:
+                subject = 'Uncaught exception in Reactor - %s' % rule_name
+            body += '\n\n'
+            body += 'The rule %s has raised an uncaught exception.\n\n' % rule_name
+            if (rule and rule.conf('disable_rule_on_error')) or self.conf['disable_rules_on_error']:
+                modified = ' or if the rule config file has been modified' if not self.args['pin_rules'] else ''
+                body += 'It has been disabled and will be re-enabled when Reactor restarts%s.\n\n' % modified
+            body += traceback.format_exc()
+
+        for notifier_type in self.conf['notifiers']:
+            notifier_class = import_class(notifier_type, self.conf['mappings']['notifier'], reactor.notifier)
+            notifier = notifier_class(self.conf['notifiers'][notifier_type])  # type: reactor.notifier.BaseNotifier
+            notifier.notify(subject, body)
 
 
 class Core(object):

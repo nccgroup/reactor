@@ -36,6 +36,11 @@ default_mappings = {
         'percentage_match': reactor.rule.PercentageMatchRule,
     },
 
+    # Default notifiers
+    'notifier': {
+        'email': reactor.notifier.EmailNotifier,
+    },
+
     # Default plugin types
     'plugin': {
         'http_server': reactor.plugin.HttpServerPlugin,
