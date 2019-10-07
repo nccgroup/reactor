@@ -59,7 +59,7 @@ b:reactor:
     paths:
       - .cache/pip
       - venv/
-    policy: pull-push
+    policy: push
 
 
 t:unit:
