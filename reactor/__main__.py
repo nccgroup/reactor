@@ -4,10 +4,8 @@ import signal
 import sys
 import traceback
 
-import urllib3
-
 import reactor.plugin as reactor_plugin
-from reactor.alerter import TestAlerter
+from reactor.alerter import TestAlerter, BasicHitString
 from reactor.config import parse_config
 from reactor.exceptions import ReactorException, ConfigException
 from reactor.reactor import Reactor
@@ -21,8 +19,6 @@ from reactor.util import (
     pretty_ts,
     import_class,
 )
-
-urllib3.disable_warnings()
 
 
 def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
@@ -274,14 +270,29 @@ def perform_hits(config: dict, args: dict) -> int:
                                 hits[list(hits.keys())[0]])
 
         else:
-            alerter = TestAlerter(rule, {'format': args['format'], 'output': args['output']})
-
             rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
             hits = rule.get_hits(start_time, end_time, rule.get_index(start_time, end_time))
-            alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
+
+            # Format the hits
+            formatted_str = []
+            for hit in hits:
+                hit_str = str(BasicHitString(args['format'], hit)) + (('-' * 80) if args['format'] != 'json' else '')
+                formatted_str.append(hit_str)
+
+            # Print the formatted hits
+            if args['output'] == 'stdout':
+                print(*formatted_str, sep='\n', end='\n', file=sys.stdout)
+            elif args['output'] == 'stderr':
+                print(*formatted_str, sep='\n', end='\n', file=sys.stderr)
+            elif args['output'] == 'devnull':
+                pass
+            else:
+                with open(args['output'], 'w') as f:
+                    f.writelines([line + '\n' for line in formatted_str])
+
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(start_time, rule.conf('use_local_time')),

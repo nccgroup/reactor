@@ -23,6 +23,56 @@ class DateTimeEncoder(json.JSONEncoder):
             return super(DateTimeEncoder, self).default(o)
 
 
+def _ensure_new_line(text: str):
+    """ Ensure that ``text`` has a new line at then end. """
+    while text[-2:] != '\n\n':
+        text += '\n'
+    return text
+
+
+def _format_as_pretty_json(blob):
+    """ Format ``blob`` as a pretty JSON encoded string. """
+    try:
+        return json.dumps(blob, cls=DateTimeEncoder, sort_keys=True,
+                          indent=4, ensure_ascii=False)
+    except UnicodeDecodeError:
+        # This blob contains non-unicode, so lets pretend it's Latin-1 to show something
+        return json.dumps(blob, cls=DateTimeEncoder, sort_keys=True,
+                          indent=4, encoding='Latin-1', ensure_ascii=False)
+
+
+def _format_as_basic_string(match: dict):
+    """ Return ``match`` in the basic string format. """
+    text = ''
+    for key, value in sorted(match.items(), key=lambda x: x[0]):
+        if key.startswith('top_events_'):
+            continue
+        value_str = str(value)
+        value_str.replace('\\n', '\n')
+        if type(value) in [list, dict]:
+            try:
+                value_str = _format_as_pretty_json(value)
+            except TypeError:
+                # Non serializable object, fallback to str
+                pass
+        text += '%s: %s\n' % (key, value_str)
+    return text
+
+
+class BasicHitString(object):
+    """ Creates a string containing fields in hit. """
+
+    def __init__(self, format: str, hit: dict):
+        self.format = format
+        self.hit = hit
+
+    def __str__(self):
+        if self.format == 'json':
+            return json.dumps(self.hit, cls=DateTimeEncoder, sort_keys=False, indent=None)
+        else:
+            return _format_as_basic_string(self.hit)
+
+
 class BasicMatchString(object):
     """ Creates a string containing fields in match for the given rule. """
 
@@ -30,10 +80,6 @@ class BasicMatchString(object):
         self.rule = rule
         self.extra = extra
         self.match = match
-
-    def _ensure_new_line(self):
-        while self.text[-2:] != '\n\n':
-            self.text += '\n'
 
     def _add_custom_alert_text(self):
         missing = self.rule.conf('alert_missing_value', '<MISSING VALUE>')
@@ -87,44 +133,20 @@ class BasicMatchString(object):
 
                 self.text += '\n'
 
-    def _add_match_items(self):
-        for key, value in sorted(self.match.items(), key=lambda x: x[0]):
-            if key.startswith('top_events_'):
-                continue
-            value_str = str(value)
-            value_str.replace('\\n', '\n')
-            if type(value) in [list, dict]:
-                try:
-                    value_str = self._pretty_print_as_json(value)
-                except TypeError:
-                    # Non serializable object, fallback to str
-                    pass
-            self.text += '%s: %s\n' % (key, value_str)
-
-    @staticmethod
-    def _pretty_print_as_json(blob):
-        try:
-            return json.dumps(blob, cls=DateTimeEncoder, sort_keys=True,
-                              indent=4, ensure_ascii=False)
-        except UnicodeDecodeError:
-            # This blob contains non-unicode, so lets pretend it's Latin-1 to show something
-            return json.dumps(blob, cls=DateTimeEncoder, sort_keys=True,
-                              indent=4, encoding='Latin-1', ensure_ascii=False)
-
     def __str__(self):
         self.text = ''
         if not self.rule.conf('alert_text'):
             self.text += self.rule.name + '\n\n'
 
         self._add_custom_alert_text()
-        self._ensure_new_line()
+        self.text = _ensure_new_line(self.text)
         if self.rule.conf('alert_text_type') != 'alert_text_only':
             self._add_rule_text()
-            self._ensure_new_line()
+            self.text = _ensure_new_line(self.text)
             if self.rule.conf('top_count_keys'):
                 self._add_top_counts()
             if self.rule.conf('alert_text_type') != 'exclude_fields':
-                self._add_match_items()
+                self.text += _format_as_basic_string(self.match)
         return self.text
 
 
