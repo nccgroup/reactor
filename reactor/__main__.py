@@ -152,7 +152,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                          help='Name of the old index to copy the data across from')
 
     # Validate command
-    test_sp = sub_parser.add_parser('validate', parents=[config, run_rule],
+    test_sp = sub_parser.add_parser('validate', parents=[config],
                                     help='Validate the specified rules')
     test_sp.set_defaults(action='validate', mode='test')
     test_sp.add_argument('rules',
