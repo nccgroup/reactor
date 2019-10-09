@@ -1,5 +1,5 @@
 __version__ = '1.0.0'
-__author__ = 'Pete Scopes'
+__author__ = 'Peter Scopes'
 
 from reactor.alerter import (
     Alerter, DebugAlerter, TestAlerter, CommandAlerter, EmailAlerter, WebhookAlerter
