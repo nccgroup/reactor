@@ -327,13 +327,19 @@ class FileRuleLoader(RuleLoader):
         return list(rules.values())
 
     def get_hash(self, locator: str) -> str:
+        """
+        Generate a hash of the contents of the rule file and all of imported file.
+        Incorporates the modification time of each file.
+        """
         rule_hash = hashlib.sha256()
         if os.path.exists(locator):
             with open(locator) as fh:
                 rule_hash.update(fh.read().encode('utf-8'))
+                rule_hash.update(str(os.path.getmtime(locator)).encode('utf-8'))
             for import_locator in self.rule_imports.get(locator, []):
                 with open(import_locator) as fh:
                     rule_hash.update(fh.read().encode('utf-8'))
+                    rule_hash.update(str(os.path.getmtime(import_locator)).encode('utf-8'))
         return rule_hash.hexdigest()
 
     def get_yaml(self, locator: str) -> dict:
