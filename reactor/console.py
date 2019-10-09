@@ -1,10 +1,10 @@
 import curses
-import os
-import texttable as tt
 import time
 
-from reactor.reactor import Reactor
-from reactor.util import ts_to_dt, pretty_ts, dt_now
+import texttable as tt
+
+from .reactor import Reactor
+from .util import ts_to_dt, pretty_ts, dt_now
 
 highlight = []
 cache = {}

@@ -1,16 +1,18 @@
-import os
 import json
-import socket
+import os
 import smtplib
-import requests
+import socket
 import subprocess
 import sys
-from texttable import Texttable
 from email.mime.text import MIMEText
 from email.utils import formatdate
-from reactor.exceptions import ReactorException
-from reactor.loader import Rule
-from reactor.util import load_yaml, dots_get, resolve_string, reactor_logger
+
+import requests
+from texttable import Texttable
+
+from .exceptions import ReactorException
+from .loader import Rule
+from .util import load_yaml, dots_get, resolve_string, reactor_logger
 
 
 class DateTimeEncoder(json.JSONEncoder):

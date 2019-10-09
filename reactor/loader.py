@@ -9,14 +9,14 @@ import jsonschema
 import yaml
 
 import reactor.enhancement
-from reactor.exceptions import ReactorException, ConfigException
-from reactor.rule import Rule
-from reactor.util import (
+from .exceptions import ReactorException, ConfigException
+from .rule import Rule
+from .util import (
     reactor_logger,
     load_yaml,
     import_class
 )
-from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
+from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 
 class RuleLoader(object):

@@ -1,11 +1,13 @@
 import json
-import time
-import elasticsearch
-import elasticsearch.helpers
 import os
 import sys
-from reactor.exceptions import ReactorException
-from reactor.util import reactor_logger, ElasticSearchClient
+import time
+
+import elasticsearch
+import elasticsearch.helpers
+
+from .exceptions import ReactorException
+from .util import reactor_logger, ElasticSearchClient
 
 
 def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, old_index=None, force=False):

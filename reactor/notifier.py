@@ -4,8 +4,8 @@ import socket
 from email.mime.text import MIMEText
 from email.utils import formatdate
 
-from reactor.exceptions import ReactorException
-from reactor.util import load_yaml, reactor_logger
+from .exceptions import ReactorException
+from .util import load_yaml, reactor_logger
 
 
 def get_account(account_file: str, relative_file: str = None) -> (str, str):

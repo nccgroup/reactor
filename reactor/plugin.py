@@ -6,8 +6,8 @@ import ssl
 import threading
 import time
 
-from reactor.reactor import Reactor
-from reactor.util import import_class
+from .reactor import Reactor
+from .util import import_class
 
 logging.getLogger('reactor.plugin').addHandler(logging.NullHandler())
 

@@ -7,9 +7,9 @@ import elasticsearch
 from sortedcontainers import SortedKeyList
 
 import reactor.enhancement
-from reactor.exceptions import ConfigException, ReactorException, QueryException
-from reactor.kibana import filters_from_kibana
-from reactor.util import (
+from .exceptions import ConfigException, ReactorException, QueryException
+from .kibana import filters_from_kibana
+from .util import (
     dots_get, dots_set,
     generate_id, hashable,
     ts_to_dt, unix_to_dt, unixms_to_dt, ts_to_dt_with_format,
@@ -21,7 +21,7 @@ from reactor.util import (
     ElasticSearchClient, elasticsearch_client,
     add_raw_postfix, format_index,
 )
-from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
+from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 
 class WorkingData(object):
