@@ -399,10 +399,11 @@ class Reactor(object):
         rule.data.next_start_time = None
         rule.data.next_min_start_time = None
 
-    def handle_uncaught_exception(self, exception, rule):
+    def handle_uncaught_exception(self, exception, rule: Rule):
         """ Disables a rule and sends a notification. """
         # reactor_logger.error(traceback.format_exc())
-        self.core.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception), {'rule': rule.name})
+        self.core.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception),
+                               {'rule': rule.name}, rule=rule)
 
         if rule.conf('disable_rule_on_error'):
             self.loader.disable(rule.locator)
@@ -525,7 +526,7 @@ class Core(object):
             try:
                 hits_terms = rule.get_hits_terms(start_time, end_time, index, key, qk, number)
             except QueryException as e:
-                self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query})
+                self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query}, rule=rule)
                 hits_terms = None
 
             if hits_terms is None:
@@ -602,7 +603,7 @@ class Core(object):
                 else:
                     kb_link = reactor.kibana.use_kibana_link(rule, alerts[0]['match_body'])
             except ReactorException as e:
-                self.handle_error('Could not generate Kibana dashboard for %s match: %s' % (rule.name, e))
+                self.handle_error('Could not generate Kibana dashboard for %s match: %s' % (rule.name, e), rule=rule)
             else:
                 alerts[0]['kibana_link'] = kb_link
 
@@ -621,13 +622,15 @@ class Core(object):
                         try:
                             enhancement.process(alert['match_body'])
                         except ReactorException as e:
-                            self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name})
+                            self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name},
+                                              rule=rule)
 
                     for enhancement in rule.alert_enhancements:
                         try:
                             enhancement.process(alert)
                         except ReactorException as e:
-                            self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name})
+                            self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name},
+                                              rule=rule)
 
                     valid_alerts.append(alert)
 
@@ -649,7 +652,7 @@ class Core(object):
                 alerter.alert(alerts, silenced=silenced, publish=self.mode in ['default'])
             except ReactorException as e:
                 self.handle_error('Error while running alert %s: %s' % (alerter.get_info()['type'], e),
-                                  {'rule': rule.name})
+                                  {'rule': rule.name}, rule=rule)
                 alert_exception = str(e)
             else:
                 alert_sent += 1
@@ -712,7 +715,7 @@ class Core(object):
             if len(res['hits']['hits']) == 0:
                 return None
         except (KeyError, elasticsearch.ElasticsearchException) as e:
-            self.handle_error("Error searching for pending aggregated matches: %s" % e, {'rule_uuid': rule.locator})
+            self.handle_error("Error searching for pending aggregated matches: %s" % e, {'rule': rule.name}, rule=rule)
             return None
 
         return res['hits']['hits'][0]
@@ -746,7 +749,7 @@ class Core(object):
                         alert_time = unix_to_dt(iterator.get_next())
                     except Exception as e:
                         self.handle_error('Error parsing aggregate send time Cron format %s' % e,
-                                          rule.conf('aggregation.schedule'))
+                                          rule.conf('aggregation.schedule'), rule=rule)
                 else:
                     if rule.conf('aggregate_by_match_time', False):
                         alert_time = match_time + rule.conf('aggregation')
@@ -810,7 +813,7 @@ class Core(object):
                     reactor_logger.info('Found expired previous run for %s at %s', rule.name, end_time)
                     return None
         except (elasticsearch.ElasticsearchException, KeyError) as e:
-            self.handle_error('Error querying for last run: %s' % e, {'rule': rule.name})
+            self.handle_error('Error querying for last run: %s' % e, {'rule': rule.name}, rule=rule)
             return None
 
     def set_start_time(self, rule: Rule, end_time) -> None:
@@ -936,7 +939,7 @@ class Core(object):
                 res = self.es_client.search(index=index, doc_type='silence',
                                             size=1, body=query, _source_include=['until', 'exponent'])
         except elasticsearch.ElasticsearchException as e:
-            self.handle_error('Error while querying for alert silence status: %s' % e, {'rule': rule.name})
+            self.handle_error('Error while querying for alert silence status: %s' % e, {'rule': rule.name}, rule=rule)
             return None
         else:
             if res['hits']['hits']:
@@ -988,7 +991,7 @@ class Core(object):
                         data = rule.remove_duplicate_events(data)
                         rule.data.num_duplicates += old_len - len(data)
             except QueryException as e:
-                self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query})
+                self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query}, rule=rule)
                 return None
 
             # There was an exception while querying
@@ -1084,13 +1087,15 @@ class Core(object):
                     try:
                         enhancement.process(match)
                     except ReactorException as e:
-                        self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name})
+                        self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name},
+                                          rule=rule)
 
                 for enhancement in rule.alert_enhancements:
                     try:
                         enhancement.process(alert)
                     except ReactorException as e:
-                        self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name})
+                        self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name},
+                                          rule=rule)
 
             except reactor.enhancement.DropException:
                 # Drop this match
@@ -1187,12 +1192,13 @@ class Core(object):
 
         return rule.data
 
-    def handle_error(self, message, data=None):
+    def handle_error(self, message, data=None, rule: Rule = None):
         """ Logs messages at error level and writes message, data and traceback to ElasticSearch. """
         reactor_logger.error(message)
         body = {'message': message,
                 'traceback': traceback.format_exc().strip().split('\n'),
-                'data': data}
+                'data': data,
+                'rule_uuid': rule.locator if rule else None}
         self.writeback('error', body)
 
     def handle_rule_execution(self, rule: Rule):
@@ -1229,7 +1235,7 @@ class Core(object):
         try:
             rule.data = self.run_rule(rule, end_time, rule.data.initial_start_time)
         except ReactorException as e:
-            self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name})
+            self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name}, rule=rule)
         # except Exception as e:
         #     self.handle_uncaught_exception(e, rule)
         else:
