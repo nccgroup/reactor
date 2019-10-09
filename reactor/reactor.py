@@ -121,7 +121,8 @@ class Reactor(object):
         except ReactorException as e:
             reactor_logger.error('Error running rule "%s": %s', rule.name, str(e))
         except Exception as e:
-            self.handle_uncaught_exception(e, rule)
+            _, tb = sys.exc_info()[1:]
+            self.handle_uncaught_exception(e, rule, ''.join(traceback.format_tb(tb)))
         else:
             reactor_logger.info('Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                 '%s alerts sent (%s silenced)',
@@ -384,7 +385,7 @@ class Reactor(object):
 
         # If there was an uncaught exception raised
         if event.code == apscheduler.events.EVENT_JOB_ERROR:
-            self.handle_uncaught_exception(event.exception, rule)
+            self.handle_uncaught_exception(event.exception, rule, event.traceback)
 
         # If the rule successfully executed
         elif event.code == apscheduler.events.EVENT_JOB_EXECUTED:
@@ -399,9 +400,9 @@ class Reactor(object):
         rule.data.next_start_time = None
         rule.data.next_min_start_time = None
 
-    def handle_uncaught_exception(self, exception, rule: Rule):
+    def handle_uncaught_exception(self, exception, rule: Rule, tb: str = None):
         """ Disables a rule and sends a notification. """
-        # reactor_logger.error(traceback.format_exc())
+        reactor_logger.debug(tb or '')
         self.core.handle_error('Uncaught exception running rule %s: %s' % (rule.name, exception),
                                {'rule': rule.name}, rule=rule)
 
@@ -690,11 +691,7 @@ class Core(object):
 
     def alert(self, alerts, rule, alert_time=None, retried=False, silenced=False) -> int:
         """ Wraps alerting, Kibana linking and enhancements in an exception handler. """
-        try:
-            return self.send_alert(alerts, rule, alert_time, retried=retried, silenced=silenced)
-        except Exception as e:
-            self.handle_uncaught_exception(e, rule)
-        return 0
+        return self.send_alert(alerts, rule, alert_time, retried=retried, silenced=silenced)
 
     def find_pending_aggregate_alert(self, rule: Rule, aggregation_key_value=None):
         query = {'filter': {'bool': {'must': [{'term': {'rule_uuid': rule.locator}},
@@ -1236,8 +1233,6 @@ class Core(object):
             rule.data = self.run_rule(rule, end_time, rule.data.initial_start_time)
         except ReactorException as e:
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name}, rule=rule)
-        # except Exception as e:
-        #     self.handle_uncaught_exception(e, rule)
         else:
             # old_start_time = pretty_ts(rule.data.original_start_time, rule.conf('use_local_time'))
             old_start_time = pretty_ts(rule.data.start_time, rule.conf('use_local_time'))
