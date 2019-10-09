@@ -7,7 +7,7 @@
 /env/
 /rules/
 /venv/
-/config.yaml
+/*.yaml
 /*.jsonl
 /*.ndjson
 
