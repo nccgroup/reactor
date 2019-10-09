@@ -1,0 +1,17 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+type: object
+additionaProperties: false
+required: [command]
+properties:
+  command: {$ref: "common.yaml#/definitions/arrayOfStrings"}
+  pipe_format:
+    type: string
+    enum: [json, plain]
+    default: json
+  fail_on_non_zero_exit:
+    type: boolean
+      default: false
+...

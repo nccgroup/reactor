@@ -201,9 +201,11 @@ class RuleLoader(object):
 
         # Validate the specific rule type
         try:
-            rule_type.rule_schema.validate(conf)
+            rule_type.schema().validate(conf)
         except jsonschema.ValidationError as e:
             raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
+        except Exception as e:
+            print(str(e))
 
         # Instantiate Rule
         try:
@@ -287,12 +289,20 @@ class RuleLoader(object):
 
         # Load alerters
         alerters = []
-        for alerter_name in rule.conf('alerters'):
-            alerter_conf = copy.deepcopy(rule.conf('alerters')[alerter_name])
-            alerter_class = import_class(alerter_name, mappings['alerter'], reactor.alerter)
-            if not issubclass(alerter_class, reactor.alerter.Alerter):
-                raise ReactorException('Alerter module %s is not a subclass of Alerter' % alerter_class)
-            alerters.append(alerter_class(rule, alerter_conf))
+        if type(rule.conf('alerters')) == dict:
+            rule.set_conf('alerters', [rule.conf('alerters')])
+        for alerter in rule.conf('alerters'):
+            for alerter_name in alerter:
+                alerter_conf = copy.deepcopy(alerter[alerter_name])
+                alerter_class = import_class(alerter_name, mappings['alerter'], reactor.alerter)
+                if not issubclass(alerter_class, reactor.alerter.Alerter):
+                    raise ReactorException('Alerter module %s is not a subclass of Alerter' % alerter_class)
+                # Validate the alerter configuration
+                try:
+                    alerter_class.schema().validate(alerter_conf)
+                except jsonschema.ValidationError as e:
+                    raise ConfigException('Invalid rule configuration: %s\n%s' % (rule.locator, e))
+                alerters.append(alerter_class(rule, alerter_conf))
         rule.alerters = alerters
 
 

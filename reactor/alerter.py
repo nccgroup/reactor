@@ -13,6 +13,7 @@ from texttable import Texttable
 from .exceptions import ReactorException
 from .loader import Rule
 from .util import load_yaml, dots_get, resolve_string, reactor_logger
+from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -152,6 +153,9 @@ class BasicMatchString(object):
 
 class Alerter(object):
 
+    _schema_file = None
+    _schema = None
+
     def __init__(self, rule: Rule, conf: dict):
         self.rule = rule
         self.conf = conf
@@ -159,6 +163,13 @@ class Alerter(object):
         # and attached to each reactor used by a rule before calling alert()
         self.pipeline = None
         self.aggregation_summary_text_maximum_width = 80
+
+    @classmethod
+    def schema(cls):
+        """ Return the alerter schema. If not loaded, load and cache. """
+        if not cls._schema:
+            cls._schema = yaml_schema(SetDefaultsDraft7Validator, cls._schema_file, __file__)
+        return cls._schema
 
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
         """
@@ -265,6 +276,8 @@ class Alerter(object):
 class DebugAlerter(Alerter):
     """ The debug alerter uses a Python logger (by default, alerting to terminal). """
 
+    _schema_file = 'schemas/alerter-debug.yaml'
+
     def __init__(self, *args):
         super(DebugAlerter, self).__init__(*args)
 
@@ -292,6 +305,8 @@ class DebugAlerter(Alerter):
 
 class TestAlerter(Alerter):
     """ The test alerter uses a Python logger (by default, alerting to terminal). """
+
+    _schema_file = 'schemas/alerter-test.yaml'
     mode = 'w'
 
     def __init__(self, *args):
@@ -326,6 +341,8 @@ class TestAlerter(Alerter):
 
 
 class EmailAlerter(Alerter):
+
+    _schema_file = 'schemas/alerter-email.yaml'
 
     def __init__(self, *args):
         super(EmailAlerter, self).__init__(*args)
@@ -418,6 +435,8 @@ class EmailAlerter(Alerter):
 
 class WebhookAlerter(Alerter):
 
+    _schema_file = 'schemas/alerter-webhook.yaml'
+
     def __init__(self, *args):
         super(WebhookAlerter, self).__init__(*args)
         urls = self.conf.get('url')
@@ -461,6 +480,8 @@ class WebhookAlerter(Alerter):
 
 
 class CommandAlerter(Alerter):
+
+    _schema_file = 'schemas/alerter-command.yaml'
 
     def __init__(self, *args):
         super(CommandAlerter, self).__init__(*args)

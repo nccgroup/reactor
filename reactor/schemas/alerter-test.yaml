@@ -1,0 +1,16 @@
+---
+$schema: http://json-schema.org/draft-07/schema#
+definitions: {}
+
+type: object
+additionalProperties: false
+properties:
+  format:
+    type: string
+    enum: [json, plain]
+    default: plain
+  output:
+    title: "Path to where output where be written, or stdout or stderr"
+    type: string
+    default: stdout
+...

@@ -11,3 +11,4 @@ properties:
   scan_subdirectories:
     type: boolean
     default: false
+...

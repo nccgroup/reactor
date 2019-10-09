@@ -97,4 +97,22 @@ definitions:
             title: "Path to client private key"
             examples:
             - /var/ssl/elasticsearch/client.key
+
+  emails:
+    oneOf:
+    - type: string
+      format: email
+    - type: array
+      items:
+        type: string
+        format: email
+
+  urls:
+    oneOf:
+    - type: string
+      format: url
+    - type: array
+      items:
+        type: string
+        format: url
 ...
