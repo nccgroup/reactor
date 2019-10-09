@@ -4,6 +4,8 @@ import signal
 import sys
 import traceback
 
+import urllib3
+
 import reactor.plugin as reactor_plugin
 from reactor.alerter import TestAlerter, BasicHitString
 from reactor.config import parse_config
@@ -44,6 +46,12 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                           default='seconds=20',
                           metavar='units=val',
                           help='Maximum time to wait for ElasticSearch to become responsive (e.g. seconds=30)')
+
+    disable_warnings = argparse.ArgumentParser(add_help=False)
+    disable_warnings.add_argument('--suppress',
+                                  action='store_true',
+                                  dest='disable_warnings',
+                                  help='Disable warnings from urllib3')
 
     timestamps = argparse.ArgumentParser(add_help=False)
     timestamps.add_argument('--start',
@@ -93,7 +101,8 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     sub_parser = parser.add_subparsers(title='actions')
 
     # Normal run
-    run_sp = sub_parser.add_parser('run', parents=[config, patience, timestamps], help='Run the reactor client')
+    run_sp = sub_parser.add_parser('run', parents=[config, patience, timestamps, disable_warnings],
+                                   help='Run the reactor client')
     run_sp.set_defaults(action='run')
     run_sp_group = run_sp.add_mutually_exclusive_group()
     run_sp_group.add_argument('--reload',
@@ -131,7 +140,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         help='Limit running to the specified rules')
 
     # Initialise command
-    init_sp = sub_parser.add_parser('init', parents=[config, patience],
+    init_sp = sub_parser.add_parser('init', parents=[config, patience, disable_warnings],
                                     help='Initialise the reactor indices and templates')
     init_sp.set_defaults(action='init')
     init_sp.add_argument('-m', '--mappings',
@@ -156,7 +165,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                          help='List of rules to validate')
 
     # Test command
-    test_sp = sub_parser.add_parser('test', parents=[config, patience, run_rule],
+    test_sp = sub_parser.add_parser('test', parents=[config, patience, run_rule, disable_warnings],
                                     help='Test the specified rules')
     test_sp.set_defaults(action='test', mode='test')
     test_sp.add_argument('rules',
@@ -164,7 +173,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                          help='List of rules to test')
 
     # Hits command
-    hits_sp = sub_parser.add_parser('hits', parents=[config, patience, run_rule],
+    hits_sp = sub_parser.add_parser('hits', parents=[config, patience, run_rule, disable_warnings],
                                     help='Retrieve the hits for the specified rule')
     hits_sp.set_defaults(action='hits', mode='test')
     hits_sp.add_argument('--counts',
@@ -174,7 +183,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                          help='The rule to retrieve hits')
 
     # Console command
-    console_sp = sub_parser.add_parser('console', parents=[config, patience],
+    console_sp = sub_parser.add_parser('console', parents=[config, patience, disable_warnings],
                                        help='Start the reactor console')
     console_sp.set_defaults(action='console')
     console_sp.add_argument('--index',
@@ -189,7 +198,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                             help='Maximum number of hits to retrieve (default: %(default)s)')
 
     # Silence command
-    silence_sp = sub_parser.add_parser('silence', parents=[config, patience],
+    silence_sp = sub_parser.add_parser('silence', parents=[config, patience, disable_warnings],
                                        help='Silence a set of rules')
     silence_sp.set_defaults(action='silence')
     silence_sp.add_argument('rules',
@@ -357,6 +366,9 @@ def main(args: list = None):
 
     if args['log_level']:
         reactor_logger.setLevel(args['log_level'])
+
+    if args['disable_warnings']:
+        urllib3.disable_warnings()
 
     try:
         config = parse_config(args['config'])
