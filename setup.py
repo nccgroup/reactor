@@ -16,7 +16,7 @@ setuptools.setup(
     packages=setuptools.find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     exclude_package_data={},
     license='Copyright 2019 NCC Group',
-    platforms=('OS Independent',),
+    platforms=['OS Independent'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
@@ -29,7 +29,7 @@ setuptools.setup(
         'Topic :: Security',
     ],
     entry_points={
-        'console_scripts': ['reactor=reactor.__main__']},
+        'console_scripts': ['reactor=reactor.__main__:main']},
     package_data={'reactor': ['schemas/*.yaml', 'mappings/**/*.json']},
     install_requires=[
         'apscheduler>=3.6.0',

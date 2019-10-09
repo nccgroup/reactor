@@ -332,7 +332,8 @@ def perform_run(config: dict, args: dict) -> int:
     return exit_code
 
 
-def main(args):
+def main(args: list = None):
+    args = args or sys.argv[1:]
     signal.signal(signal.SIGINT, handle_signal)
 
     # Silence the APScheduler logs
@@ -388,5 +389,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
-
+    main(sys.argv[1:])
