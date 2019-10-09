@@ -27,18 +27,12 @@ properties:
   is_enabled:
     type: boolean
     default: true
-  es_host: {type: string}
-  es_port: {type: integer}
+  elasticsearch: {$ref: 'file:common.yaml#/definitions/elasticsearch'}
   index: {type: string}
   name: {type: string}
   description:
     type: [string, 'null']
     default: ''
-
-  use_ssl: {type: boolean}
-  verify_certs: {type: boolean}
-  es_username: {type: string}
-  es_password: {type: string}
   use_strftime_index: {type: boolean}
 
   # Optional Settings
