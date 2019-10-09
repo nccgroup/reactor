@@ -54,7 +54,7 @@ class Reactor(object):
         self.loader = conf['loader']  # type: RuleLoader
 
         self.es_client = elasticsearch_client(conf['elasticsearch'])
-        self.writeback_index = conf['index']
+        self.writeback_index = conf['writeback_index']
         self.alert_alias = conf['alert_alias']
 
         self.start_time = args.get('start', dt_now())
@@ -446,7 +446,7 @@ class Core(object):
         self.loader = conf['loader']  # type: reactor.loader.RuleLoader
 
         self.es_client = elasticsearch_client(conf['elasticsearch'])
-        self.writeback_index = conf['index']
+        self.writeback_index = conf['writeback_index']
         self.alert_alias = conf['alert_alias']
         self.alert_time_limit = conf['alert_time_limit']
         self.old_query_limit = conf['old_query_limit']
@@ -705,9 +705,9 @@ class Core(object):
         query['sort'] = {'alert_time': {'order': 'desc'}}
         try:
             if self.es_client.es_version_at_least(6):
-                res = self.es_client.search(index=self.writeback_index, body=query, size=1)
+                res = self.es_client.search(index=self.alert_alias, body=query, size=1)
             else:
-                res = self.es_client.search(index=self.writeback_index, doc_type='alert', body=query, size=1)
+                res = self.es_client.search(index=self.alert_alias, doc_type='alert', body=query, size=1)
 
             if len(res['hits']['hits']) == 0:
                 return None

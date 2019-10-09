@@ -18,7 +18,7 @@ docker run -d -p 9200:9200/tcp --name elasticsearch docker.elastic.co/elasticsea
 
 And the following configuration in `config.yaml`:
 ```yaml
-index: reactor
+writeback_index: reactor
 alert_alias: reactor_alerts
 
 elasticsearch: &elasticsearch

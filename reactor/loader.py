@@ -258,11 +258,11 @@ class RuleLoader(object):
         # (%y = short year, %M = minutes, %D = full date)
         if rule.conf('use_strftime_index'):
             for token in ['%y', '%M', '%D']:
-                if token in rule.conf('index'):
+                if token in rule.conf('writeback_index'):
                     reactor_logger.warning('Did you mean to use %s in the index?'
                                            'The index will for formatted like %s' % (token,
                                                                                      datetime.datetime.now().strftime(
-                                                                                         rule.conf('index'))))
+                                                                                         rule.conf('writeback_index'))))
 
     @staticmethod
     def load_modules(rule: Rule, mappings: dict):

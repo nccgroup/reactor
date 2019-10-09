@@ -16,7 +16,7 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
 
     es_index = elasticsearch.client.IndicesClient(es_client)
     if not recreate:
-        index = conf['index'] + '_alert' if es_client.es_version_at_least(6) else conf['index']
+        index = conf['writeback_index'] + '_alert' if es_client.es_version_at_least(6) else conf['writeback_index']
         if es_index.exists(index):
             reactor_logger.warning('Index %s already exists. Skipping index creation.' % index)
             return None
@@ -25,21 +25,22 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
             reactor_logger.warning('Initialisation abandoned.')
             return None
 
-    if es_index.exists_template(conf['index']):
-        reactor_logger.info('Template %s already exists. Deleting in preparation for creating indices.' % conf['index'])
-        es_index.delete_template(conf['index'])
+    if es_index.exists_template(conf['writeback_index']):
+        reactor_logger.info('Template %s already exists.'
+                            ' Deleting in preparation for creating indices.' % conf['writeback_index'])
+        es_index.delete_template(conf['writeback_index'])
 
     # (Re-)Create indices.
     if es_client.es_version_at_least(6):
         index_names = (
-            conf['index'] + '_alert',
-            conf['index'] + '_status',
-            conf['index'] + '_silence',
-            conf['index'] + '_error',
+            conf['writeback_index'] + '_alert',
+            conf['writeback_index'] + '_status',
+            conf['writeback_index'] + '_silence',
+            conf['writeback_index'] + '_error',
         )
     else:
         index_names = (
-            conf['index'],
+            conf['writeback_index'],
         )
     for index_name in index_names:
         if es_index.exists(index_name):
@@ -75,55 +76,57 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
         # TODO: remove doc_type completely when elasticsearch client allows doc_type=None
         #  doc_type is a deprecated feature and will be completely removed in ElasticSearch 8
         reactor_logger.info('Applying mappings for ElasticSearch v7.x')
-        es_client.indices.put_mapping(index=conf['index'] + '_alert', doc_type='_doc',
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_alert', doc_type='_doc',
                                       body=es_index_mappings['alert'], include_type_name=True)
-        es_client.indices.put_alias(index=conf['index'] + '_alert', name=conf['alert_alias'])
-        es_client.indices.put_mapping(index=conf['index'] + '_status', doc_type='_doc',
+        es_client.indices.put_alias(index=conf['writeback_index'] + '_alert', name=conf['alert_alias'])
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_status', doc_type='_doc',
                                       body=es_index_mappings['status'], include_type_name=True)
-        es_client.indices.put_mapping(index=conf['index'] + '_silence', doc_type='_doc',
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_silence', doc_type='_doc',
                                       body=es_index_mappings['silence'], include_type_name=True)
-        es_client.indices.put_mapping(index=conf['index'] + '_error', doc_type='_doc',
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_error', doc_type='_doc',
                                       body=es_index_mappings['error'], include_type_name=True)
-        es_client.indices.put_template(name=conf['index'], body={'index_patterns': [conf['index'] + '_alert_*'],
-                                                                 'aliases': {conf['alert_alias']: {}},
-                                                                 'settings': es_index_settings,
-                                                                 'mappings': es_index_mappings['alert']})
+        es_client.indices.put_template(name=conf['writeback_index'],
+                                       body={'index_patterns': [conf['writeback_index'] + '_alert_*'],
+                                             'aliases': {conf['alert_alias']: {}},
+                                             'settings': es_index_settings,
+                                             'mappings': es_index_mappings['alert']})
     elif es_client.es_version_at_least(6):
         reactor_logger.info('Applying mappings for ElasticSearch v6.x')
-        es_client.indices.put_mapping(index=conf['index'] + '_alert', doc_type='_doc',
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_alert', doc_type='_doc',
                                       body=es_index_mappings['alert'])
-        es_client.indices.put_alias(index=conf['index'] + '_alert', name=conf['alert_alias'])
-        es_client.indices.put_mapping(index=conf['index'] + '_status', doc_type='_doc',
+        es_client.indices.put_alias(index=conf['writeback_index'] + '_alert', name=conf['alert_alias'])
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_status', doc_type='_doc',
                                       body=es_index_mappings['status'])
-        es_client.indices.put_mapping(index=conf['index'] + '_silence', doc_type='_doc',
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_silence', doc_type='_doc',
                                       body=es_index_mappings['silence'])
-        es_client.indices.put_mapping(index=conf['index'] + '_error', doc_type='_doc',
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_error', doc_type='_doc',
                                       body=es_index_mappings['error'])
-        es_client.indices.put_template(name=conf['index'], body={'index_patterns': [conf['index'] + '_alert_*'],
-                                                                 'aliases': {conf['alert_alias']: {}},
-                                                                 'settings': es_index_settings,
-                                                                 'mappings': {'_doc': es_index_mappings['alert']}})
+        es_client.indices.put_template(name=conf['writeback_index'],
+                                       body={'index_patterns': [conf['writeback_index'] + '_alert_*'],
+                                             'aliases': {conf['alert_alias']: {}},
+                                             'settings': es_index_settings,
+                                             'mappings': {'_doc': es_index_mappings['alert']}})
     else:
         reactor_logger.info('Applying mappings for ElasticSearch v5.x')
-        es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_alert',
+        es_client.indices.put_mapping(index=conf['writeback_index'], doc_type='reactor_alert',
                                       body=es_index_mappings['alert'])
-        es_client.indices.put_alias(index=conf['index'], name=conf['alert_alias'])
-        es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_status',
+        es_client.indices.put_alias(index=conf['writeback_index'], name=conf['alert_alias'])
+        es_client.indices.put_mapping(index=conf['writeback_index'], doc_type='reactor_status',
                                       body=es_index_mappings['status'])
-        es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_silence',
+        es_client.indices.put_mapping(index=conf['writeback_index'], doc_type='reactor_silence',
                                       body=es_index_mappings['silence'])
-        es_client.indices.put_mapping(index=conf['index'], doc_type='reactor_error',
+        es_client.indices.put_mapping(index=conf['writeback_index'], doc_type='reactor_error',
                                       body=es_index_mappings['error'])
-        es_client.indices.put_template(name=conf['index'], body={'template': conf['index'] + '_*',
-                                                                 'aliases': {conf['alert_alias']: {}},
-                                                                 'settings': es_index_settings,
-                                                                 'mappings': {
-                                                                     'reactor_alert': es_index_mappings['alert']}})
+        es_client.indices.put_template(name=conf['writeback_index'],
+                                       body={'template': conf['writeback_index'] + '_*',
+                                             'aliases': {conf['alert_alias']: {}},
+                                             'settings': es_index_settings,
+                                             'mappings': {'reactor_alert': es_index_mappings['alert']}})
 
-    reactor_logger.info('New index and template %s created', conf['index'])
+    reactor_logger.info('New index and template %s created', conf['writeback_index'])
     if old_index:
-        reactor_logger.info('Copying data from old index %s to new index %s', old_index, conf['index'])
-        elasticsearch.helpers.reindex(es_client, old_index, conf['index'])
+        reactor_logger.info('Copying data from old index %s to new index %s', old_index, conf['writeback_index'])
+        elasticsearch.helpers.reindex(es_client, old_index, conf['writeback_index'])
 
 
 def read_es_index_mappings(es_version):

@@ -8,7 +8,7 @@ type: object
 required: [elasticsearch]
 
 properties:
-  index:
+  writeback_index:
     type: string
     title: "Writeback index (index prefix for ElasticSearch >= 6.x"
     default: "reactor"
