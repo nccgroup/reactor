@@ -280,7 +280,7 @@ def perform_hits(config: dict, args: dict) -> int:
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = reactor.core.run_query(rule, start_time, end_time)
+            hits = rule.get_hits(start_time, end_time, rule.get_index(start_time, end_time))
             alerter.alert([{'match_body': hit, 'match_data': {}} for hit in hits])
             reactor_logger.info('Ran from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
