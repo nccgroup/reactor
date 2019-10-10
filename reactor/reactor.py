@@ -440,7 +440,7 @@ class Reactor(object):
                 subject = 'Uncaught exception in Reactor - %s' % rule_name
             body += '\n\n'
             body += 'The rule %s has raised an uncaught exception.\n\n' % rule_name
-            if (rule and rule.conf('disable_rule_on_error')) or self.conf['disable_rules_on_error']:
+            if rule and rule.conf('disable_rule_on_error'):
                 modified = ' or if the rule config file has been modified' if not self.args['pin_rules'] else ''
                 body += 'It has been disabled and will be re-enabled when Reactor restarts%s.\n\n' % modified
             body += traceback.format_exc()
@@ -1076,7 +1076,9 @@ class Core(object):
                 stale_hits.append(_id)
         list(map(rule.data.processed_hits.pop, stale_hits))
 
-    def process_alert(self, rule: Rule, extra: dict, match: dict):
+    def process_match(self, rule: Rule, extra: dict, match: dict):
+        """ Process a match found by ``rule``. """
+        # Convert ``extra`` and ``match`` into an alert
         alert = rule.get_alert_body(extra, match, dt_now())
 
         # If realert is set, silence the rule for that duration
@@ -1159,18 +1161,18 @@ class Core(object):
         while (end_time - rule.data.start_time) > segment_size:
             tmp_end_time = tmp_end_time + segment_size
             for extra, match in self.run_query(rule, rule.data.start_time, tmp_end_time):
-                self.process_alert(rule, extra, match)
+                self.process_match(rule, extra, match)
             rule.data.cumulative_hits += rule.data.num_hits
             rule.data.num_hits = 0
             rule.data.start_time = tmp_end_time
             for extra, match in rule.garbage_collect(tmp_end_time):
-                self.process_alert(rule, extra, match)
+                self.process_match(rule, extra, match)
 
         # Guarantee that at least one search search occurs
         if rule.conf('aggregation_query_element'):
             if end_time - tmp_end_time == segment_size:
                 for extra, match in self.run_query(rule, tmp_end_time, end_time):
-                    self.process_alert(rule, extra, match)
+                    self.process_match(rule, extra, match)
                 rule.data.cumulative_hits += rule.data.num_hits
             elif (rule.data.original_start_time - tmp_end_time).total_seconds() == 0:
                 return {}
@@ -1178,10 +1180,10 @@ class Core(object):
                 end_time = tmp_end_time
         else:
             for extra, match in self.run_query(rule, rule.data.start_time, end_time):
-                self.process_alert(rule, extra, match)
+                self.process_match(rule, extra, match)
             rule.data.cumulative_hits += rule.data.num_hits
             for extra, match in rule.garbage_collect(end_time):
-                self.process_alert(rule, extra, match)
+                self.process_match(rule, extra, match)
 
         # Mark this end time for next run's start
         rule.data.previous_end_time = end_time
