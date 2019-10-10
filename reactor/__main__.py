@@ -330,7 +330,8 @@ def perform_silence(config: dict, args: dict) -> int:
 def perform_run(config: dict, args: dict) -> int:
     # Create the reactor
     reactor = Reactor(config, args)
-    signal.signal(signal.SIGINT, reactor.terminate)
+    signal.signal(signal.SIGINT, reactor.handle_signal)
+    signal.signal(signal.SIGINFO, reactor.handle_signal)
 
     # Start the plugins
     plugins = {}

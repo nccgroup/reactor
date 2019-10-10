@@ -3,6 +3,7 @@ import itertools
 import logging
 import multiprocessing
 import multiprocessing.managers
+import signal
 import sys
 import threading
 import time
@@ -179,12 +180,19 @@ class Reactor(object):
         reactor_logger.info('Goodbye')
         return 0
 
-    def terminate(self, signal_num, frame):
+    def handle_signal(self, signal_num, _):
+        if signal_num == signal.SIGINFO:
+            self.info()
+        else:
+            self.terminate(signal_num)
+
+    def terminate(self, signal_num):
         """ Try safe ``stop`` for up to ``self.MAX_TERMINATE_CALLED`` times. """
         self.terminate_called += 1
 
         if self.terminate_called >= self.MAX_TERMINATE_CALLED:
-            reactor_logger.critical('Terminating reactor')
+            if self.core_pid == multiprocessing.current_process().pid:
+                reactor_logger.critical('Terminating reactor')
             try:
                 sys.exit(signal_num)
             except Exception as e:
@@ -208,6 +216,11 @@ class Reactor(object):
             self.scheduler.shutdown()
 
             reactor_logger.info('Shutdown complete!')
+
+    def info(self):
+        """ Print number of rules sent to the executor. """
+        if self.core_pid == multiprocessing.current_process().pid:
+            print('Rules executing or waiting to execute: %s' % len(self.raft.meta['executing']))
 
     def wait_until_responsive(self, timeout: datetime.timedelta):
         """ Wait until ElasticSearch becomes responsive (or too much time passes). """
@@ -1199,6 +1212,7 @@ class Core(object):
         self.writeback('error', body)
 
     def handle_rule_execution(self, rule: Rule):
+        reactor_logger.debug('Executing rule "%s": %s', rule.name, rule.locator)
         next_run = datetime.datetime.utcnow() + rule.run_every
 
         # Set end time based on the rule's delay
