@@ -1,5 +1,6 @@
 import copy
 import datetime as dt
+import os
 import time
 from typing import Generator, List, Optional
 
@@ -21,7 +22,6 @@ from .util import (
     ElasticSearchClient, elasticsearch_client,
     add_raw_postfix, format_index,
 )
-from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 
 class WorkingData(object):
@@ -167,7 +167,6 @@ class AcceptsAggregationDataMixin(object):
 
 class Rule(object):
     _schema_file = None
-    _schema = None
 
     def __init__(self, locator: str, hash: str, conf: dict):
         """
@@ -187,11 +186,9 @@ class Rule(object):
         self.alert_enhancements = []  # type: List[reactor.enhancement.AlertEnhancement]
 
     @classmethod
-    def schema(cls):
-        """ Return the rule schema. If not loaded, load and cache. """
-        if not cls._schema:
-            cls._schema = yaml_schema(SetDefaultsDraft7Validator, cls._schema_file, __file__)
-        return cls._schema
+    def schema_file(cls):
+        """ Return the absolute path to the schema file. """
+        return os.path.join(os.path.dirname(__file__), cls._schema_file)
 
     def _working_data(self):
         return WorkingData(self.conf('timestamp_field', '@timestamp'))
@@ -279,10 +276,8 @@ class Rule(object):
         if self.conf('top_count_keys') and self.conf('raw_count_keys', True):
             if self.conf('string_multi_field_name'):
                 string_multi_field_name = self.conf('string_multi_field_name')
-            elif self.es_client.es_version_at_least(5):
-                string_multi_field_name = '.keyword'
             else:
-                string_multi_field_name = '.raw'
+                string_multi_field_name = '.keyword'
 
             for i, key in enumerate(self.conf('top_count_keys')):
                 if not key.endswith(string_multi_field_name):
@@ -799,7 +794,6 @@ class AnyRule(AcceptsHitsDataMixin, Rule):
 
 class CompareRule(AcceptsHitsDataMixin, Rule):
     """ A base class for matching a specific term by passing it to a compare function. """
-    required_options = frozenset(['compound_compare_key'])
 
     def expand_entries(self, list_type: str):
         """
@@ -832,7 +826,6 @@ class CompareRule(AcceptsHitsDataMixin, Rule):
 
 class BlacklistRule(CompareRule):
     """ A CompareRule where the compare function checks a given key against a blacklist. """
-    required_options = frozenset(['compare_key', 'blacklist'])
 
     _schema_file = 'schemas/ruletype-blacklist.yaml'
 
@@ -864,7 +857,6 @@ class BlacklistRule(CompareRule):
 
 class WhitelistRule(CompareRule):
     """ A CompareRule where the compare function checks a given key against a whitelist. """
-    required_options = frozenset(['compare_key', 'whitelist', 'ignore_null'])
 
     _schema_file = 'schemas/ruletype-whitelist.yaml'
 
@@ -899,7 +891,6 @@ class WhitelistRule(CompareRule):
 
 class ChangeRule(CompareRule):
     """ A rule that will store values for a certain term and match if those values change. """
-    required_options = frozenset(['query_key', 'compound_compare_key', 'ignore_null'])
 
     _schema_file = 'schemas/ruletype-change.yaml'
 
@@ -910,6 +901,7 @@ class ChangeRule(CompareRule):
         key = hashable(dots_get(event, self._conf['query_key']))
         values = []
         reactor_logger.debug('Previous values of compare keys: %s', self._data.occurrences)
+        # compound_compare_key is generated automatically from compare_key
         for val in self._conf['compound_compare_key']:
             lookup_value = dots_get(event, val)
             values.append(lookup_value)
@@ -959,7 +951,6 @@ class ChangeRule(CompareRule):
 
 class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that matches if num_events number of events occur within a timeframe. """
-    required_options = frozenset(['num_events', 'timeframe'])
 
     _schema_file = 'schemas/ruletype-frequency.yaml'
 
@@ -1052,7 +1043,6 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
 
 class FlatlineRule(FrequencyRule):
     """ A FrequencyRule that matches when there is low number of events within a timeframe. """
-    required_options = frozenset(['timeframe', 'threshold'])
 
     _schema_file = 'schemas/ruletype-flatline.yaml'
 
@@ -1137,7 +1127,6 @@ class FlatlineRule(FrequencyRule):
 
 class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that uses two sliding windows to compare relative event frequency. """
-    required_options = frozenset(['timeframe', 'spike_height', 'spike_type'])
 
     _schema_file = 'schemas/ruletype-spike.yaml'
 
@@ -1566,7 +1555,6 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
 
 class CardinalityRule(AcceptsHitsDataMixin, Rule):
     """ A Rule that matches if cardinality of a field is above or below a threshold within a timeframe. """
-    required_options = frozenset(['timeframe', 'cardinality_field'])
 
     _schema_file = 'schemas/ruletype-cardinality.yaml'
 
@@ -1705,8 +1693,6 @@ class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
 
 class MetricAggregationRule(BaseAggregationRule):
     """ A Rule that matches when there is a low number of events within a timeframe. """
-
-    required_options = frozenset(['metric_agg_key', 'metric_agg_type'])
 
     _schema_file = 'schemas/ruletype-metric_aggregation.yaml'
 
@@ -1860,7 +1846,7 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
 
 
 class PercentageMatchRule(BaseAggregationRule):
-    required_options = frozenset(['match_bucket_filter'])
+    """ A Rule that matches when there is percentage violation of match_bucket_filter hits of the total hits. """
 
     _schema_file = 'schemas/ruletype-percentage_match.yaml'
 

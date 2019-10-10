@@ -19,6 +19,17 @@ from .util import (
 from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 
+_schemas = {}
+""" Store """
+
+
+def _validator(schema_file: str):
+    """ Return a loaded validator based on the specified file. """
+    if schema_file not in _schemas:
+        _schemas[schema_file] = yaml_schema(SetDefaultsDraft7Validator, schema_file)
+    return _schemas[schema_file]
+
+
 class RuleLoader(object):
     rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype.yaml', __file__)
     conf_schema = None
@@ -37,6 +48,7 @@ class RuleLoader(object):
         self.rules = {}  # type: typing.Dict[str, Rule]
         self._loaded = False
         self._disabled = {}
+        self._schemas = {}
 
     def __iter__(self) -> Iterator[Rule]:
         return iter(self.rules.values())
@@ -201,7 +213,7 @@ class RuleLoader(object):
 
         # Validate the specific rule type
         try:
-            rule_type.schema().validate(conf)
+            _validator(rule_type.schema_file()).validate(conf)
         except jsonschema.ValidationError as e:
             raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
         except Exception as e:
@@ -267,7 +279,7 @@ class RuleLoader(object):
                                                                                          rule.conf('writeback_index'))))
 
     @staticmethod
-    def load_modules(rule: Rule, mappings: dict):
+    def load_modules(rule: Rule, mappings: dict) -> None:
         """ Loads things that could be modules. Enhancements, alerters, and rule type. """
         # Load match enhancements
         match_enhancements = []
@@ -299,7 +311,7 @@ class RuleLoader(object):
                     raise ReactorException('Alerter module %s is not a subclass of Alerter' % alerter_class)
                 # Validate the alerter configuration
                 try:
-                    alerter_class.schema().validate(alerter_conf)
+                    _validator(alerter_class.schema_file()).validate(alerter_conf)
                 except jsonschema.ValidationError as e:
                     raise ConfigException('Invalid rule configuration: %s\n%s' % (rule.locator, e))
                 alerters.append(alerter_class(rule, alerter_conf))

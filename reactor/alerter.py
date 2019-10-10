@@ -13,7 +13,6 @@ from texttable import Texttable
 from .exceptions import ReactorException
 from .loader import Rule
 from .util import load_yaml, dots_get, resolve_string, reactor_logger
-from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -154,7 +153,6 @@ class BasicMatchString(object):
 class Alerter(object):
 
     _schema_file = None
-    _schema = None
 
     def __init__(self, rule: Rule, conf: dict):
         self.rule = rule
@@ -165,11 +163,9 @@ class Alerter(object):
         self.aggregation_summary_text_maximum_width = 80
 
     @classmethod
-    def schema(cls):
-        """ Return the alerter schema. If not loaded, load and cache. """
-        if not cls._schema:
-            cls._schema = yaml_schema(SetDefaultsDraft7Validator, cls._schema_file, __file__)
-        return cls._schema
+    def schema_file(cls):
+        """ Return the absolute path to the schema file. """
+        return os.path.join(os.path.dirname(__file__), cls._schema_file)
 
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
         """
