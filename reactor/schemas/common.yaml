@@ -64,6 +64,16 @@ definitions:
         examples:
         - changeme
 
+      aws_region:
+        type: [string, 'null']
+        title: "AWS region"
+        default: ~
+      profile:
+        type: [string, 'null']
+        title: "AWS profile"
+        default: ~
+
+
       ssl:
         type: object
         title: "TLS connection configuration"

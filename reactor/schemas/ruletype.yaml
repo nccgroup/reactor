@@ -60,7 +60,9 @@ properties:
   max_query_size: {type: integer}
 
   owner: {type: string}
-  priority: {type: integer}
+  priority:
+    type: integer
+    default: 2
 
   filter :
     type: array
