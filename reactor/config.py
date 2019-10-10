@@ -36,6 +36,11 @@ default_mappings = {
         'percentage_match': reactor.rule.PercentageMatchRule,
     },
 
+    # Default enhancements
+    'enhancement': {
+        'metadata': reactor.enhancement.MetaDataAlertEnhancement,
+    },
+
     # Default notifiers
     'notifier': {
         'email': reactor.notifier.EmailNotifier,
