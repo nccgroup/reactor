@@ -387,7 +387,7 @@ class EmailAlerter(Alerter):
                 to_addr = recipient
                 if 'add_domain' in self.conf:
                     to_addr = [name + self.conf['add_domain'] for name in to_addr]
-        if self.conf.get('email_format') == 'html':
+        if self.conf.get('format') == 'html':
             email_msg = MIMEText(body.encode('UTF-8'), 'html', _charset='UTF-8')
         else:
             email_msg = MIMEText(body.encode('UTF-8'), _charset='UTF-8')

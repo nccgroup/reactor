@@ -99,7 +99,7 @@ rule:
 #notifiers:
 #  # Settings for the email notifier
 #  email:
-#    email_format: html
+#    format: html
 #    to: admin@example.com
 #    smtp_host: localhost
 #    smtp_port: 25
