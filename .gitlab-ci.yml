@@ -61,6 +61,24 @@ b:reactor:
       - venv/
     policy: push
 
+b:docs:
+  stage: build
+  only:
+    - branches
+  except:
+    - /^feature\/.*$/
+  script:
+    - python -V
+    - pip install virtualenv
+    - virtualenv venv
+    - source venv/bin/activate
+    - pip install -r requirements-docs.txt
+    - cd docs
+    - sphinx-build -b html -d build/doctrees -W source build/html
+  artifacts:
+    paths:
+    - docs/build/html/**
+
 
 t:unit:
   extends: .cache_template
