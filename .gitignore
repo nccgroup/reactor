@@ -4,6 +4,7 @@
 /build/
 /certs/
 /dist/
+/docs/build/
 /env/
 /rules/
 /venv/

@@ -100,3 +100,11 @@ The following set of commands (performed in ``./certs/``) will create a set a CA
 # Generate a signed device certificate:
 > openssl x509 -req -in transport-consensus.csr -CA transport-ca.pem -CAkey transport-ca.key -CAcreateserial -out transport-consensus.crt -days 500 -sha256
 ```
+
+## Build documentation
+To build the documentation:
+```shell script
+pip install -r requirements-docs.txt
+cd docs
+sphinx-build -b html -d build/doctrees -W source build/html
+```
