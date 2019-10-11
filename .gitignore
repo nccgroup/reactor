@@ -6,6 +6,7 @@
 /dist/
 /docs/build/
 /env/
+/extensions/
 /rules/
 /venv/
 /*.yaml

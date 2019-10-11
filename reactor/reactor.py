@@ -181,7 +181,7 @@ class Reactor(object):
         return 0
 
     def handle_signal(self, signal_num, _):
-        if signal_num == signal.SIGINFO:
+        if hasattr(signal, 'SIGINFO') and signal_num == signal.SIGINFO:
             self.info()
         else:
             self.terminate(signal_num)

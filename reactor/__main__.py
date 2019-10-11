@@ -330,8 +330,11 @@ def perform_silence(config: dict, args: dict) -> int:
 def perform_run(config: dict, args: dict) -> int:
     # Create the reactor
     reactor = Reactor(config, args)
+
+    # Set up the signal handler
     signal.signal(signal.SIGINT, reactor.handle_signal)
-    signal.signal(signal.SIGINFO, reactor.handle_signal)
+    if hasattr(signal, 'SIGINFO'):
+        signal.signal(signal.SIGINFO, reactor.handle_signal)
 
     # Start the plugins
     plugins = {}

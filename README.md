@@ -1,6 +1,10 @@
 # Reactor
-Create rules with custom filters and alert on matches.
-Automatically update silenced alerts with repeat alert information.
+Reactor started as a fork of the open source project [ElastAlert](https://github.com/Yelp/elastalert). The maintainer of
+this project should keep close tabs on the changes to ElastAlert (excluding their additional alerters) and ensure that
+any relevant bugs fixes be patched in and any useful feature ported in.
+
+Reactor is an alerting engine which takes in a set of rules with custom filters and alerts on matches.
+Reactor automatically updates silenced alerts with repeat alert information.
 
 ## Supported Versions
 Currently Reactor supports ElasticSearch 5.x.x, 6.x.x, and 7.x.x
