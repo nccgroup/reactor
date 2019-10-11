@@ -38,7 +38,7 @@ default_mappings = {
 
     # Default enhancements
     'enhancement': {
-        'metadata': reactor.enhancement.MetaDataAlertEnhancement,
+        'metadata': reactor.enhancement.MetaDataEnhancement,
     },
 
     # Default notifiers

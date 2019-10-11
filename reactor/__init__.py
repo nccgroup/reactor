@@ -5,7 +5,7 @@ from reactor.alerter import (
     Alerter, DebugAlerter, TestAlerter, CommandAlerter, EmailAlerter, WebhookAlerter
 )
 from .auth import Auth
-from .enhancement import AlertEnhancement, MatchEnhancement, DropException
+from .enhancement import BaseEnhancement, DropAlertException
 from .exceptions import *
 from .loader import Rule, RuleLoader, FileRuleLoader
 from .notifier import EmailNotifier

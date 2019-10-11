@@ -1,44 +1,30 @@
 from .rule import Rule
 
+
 class BaseEnhancement(object):
-    """ Enhancements take a dictionary object and modify it in some way provide enhancement. """
+    """
+    Enhancements take an alert dictionary object and modify it in some way to
+    enhance the alert. These are specified in each rule under the ``enhancements`` option.
+    """
 
     def __init__(self, rule: Rule):
         self.rule = rule
 
-
-class MatchEnhancement(BaseEnhancement):
-    """
-    Enhancements take a match dictionary object and modify it in some way to
-    enhance an alert. These are specified in each rule under the match_enhancements option.
-    Generally, the key value pairs in the match module will be contained in the alert body.
-    """
-
-    def process(self, match):
-        """
-        Modify the contents of match, a dictionary, in some way
-        :raises: DropMatchException
-        """
-        raise NotImplementedError()
-
-
-class AlertEnhancement(BaseEnhancement):
-    """
-    Enhancements take an alert dictionary object and modify it in some way to
-    enhance an alert. These are specified in each rule under the alert_enhancements option.
-    """
-
     def process(self, alert: dict):
-        """ Modify the contents of alert, a dictionary, in some way """
-        raise NotImplementedError()
+        """
+        Modify the contents of an alert dictionary, in some way.
+        See :py:func:`reactor.rule.get_alert_body` for the structure of the alert dictionary.
+        :raises DropAlertException: To drop this alert
+        """
+        pass
 
 
-class DropException(Exception):
+class DropAlertException(Exception):
     """ Reactor will drop an alert if this exception type is raised by an enhancement """
     pass
 
 
-class MetaDataAlertEnhancement(AlertEnhancement):
+class MetaDataEnhancement(BaseEnhancement):
     """
     Enhances an alert with the values of options listed in the ``metadata_fields`` option in a rule configuration.
     Defaults to ``category``, ``description``, ``owner``, and ``priority``.
@@ -63,7 +49,7 @@ class MetaDataAlertEnhancement(AlertEnhancement):
         }
     """
     def __init__(self, rule: Rule):
-        super(MetaDataAlertEnhancement, self).__init__(rule)
+        super(MetaDataEnhancement, self).__init__(rule)
         self._metadata = self.rule.conf('metadata_fields', ['category', 'description', 'owner', 'priority'])
 
     def process(self, alert: dict):

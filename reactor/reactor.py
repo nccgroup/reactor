@@ -632,23 +632,15 @@ class Core(object):
             valid_alerts = []
             for alert in alerts:
                 try:
-                    for enhancement in rule.match_enhancements:
-                        try:
-                            enhancement.process(alert['match_body'])
-                        except ReactorException as e:
-                            self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name},
-                                              rule=rule)
-
-                    for enhancement in rule.alert_enhancements:
+                    for enhancement in rule.enhancements:
                         try:
                             enhancement.process(alert)
                         except ReactorException as e:
-                            self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name},
-                                              rule=rule)
+                            self.handle_error('Error running enhancement: %s' % str(e), {'rule': rule.name}, rule=rule)
 
                     valid_alerts.append(alert)
 
-                except reactor.DropException:
+                except reactor.DropAlertException:
                     pass
             alerts = valid_alerts
             if not alerts:
@@ -1095,21 +1087,13 @@ class Core(object):
 
         if rule.conf('run_enhancements_first'):
             try:
-                for enhancement in rule.match_enhancements:
-                    try:
-                        enhancement.process(match)
-                    except ReactorException as e:
-                        self.handle_error('Error running match enhancement: %s' % str(e), {'rule': rule.name},
-                                          rule=rule)
-
-                for enhancement in rule.alert_enhancements:
+                for enhancement in rule.enhancements:
                     try:
                         enhancement.process(alert)
                     except ReactorException as e:
-                        self.handle_error('Error running alert enhancement: %s' % str(e), {'rule': rule.name},
-                                          rule=rule)
+                        self.handle_error('Error running enhancement: %s' % str(e), {'rule': rule.name}, rule=rule)
 
-            except reactor.enhancement.DropException:
+            except reactor.enhancement.DropAlertException:
                 # Drop this match
                 return
 

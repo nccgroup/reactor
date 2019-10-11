@@ -281,23 +281,14 @@ class RuleLoader(object):
     @staticmethod
     def load_modules(rule: Rule, mappings: dict) -> None:
         """ Loads things that could be modules. Enhancements, alerters, and rule type. """
-        # Load match enhancements
-        match_enhancements = []
-        for enhancement_name in rule.conf('match_enhancements', []):
+        # Load enhancements
+        enhancements = []
+        for enhancement_name in rule.conf('enhancements', []):
             enhancement_class = import_class(enhancement_name, mappings['enhancement'], reactor.enhancement)
-            if not issubclass(enhancement_class, reactor.enhancement.MatchEnhancement):
-                raise ConfigException('Enhancement module %s not a subclass of MatchEnhancement' % enhancement_name)
-            match_enhancements.append(enhancement_class(rule))
-        rule.match_enhancements = match_enhancements
-
-        # Load alert enhancements
-        alert_enhancements = []
-        for enhancement_name in rule.conf('alert_enhancements', []):
-            enhancement_class = import_class(enhancement_name, mappings['enhancement'], reactor.enhancement)
-            if not issubclass(enhancement_class, reactor.enhancement.AlertEnhancement):
-                raise ConfigException('Enhancement module %s not a subclass of AlertEnhancement' % enhancement_name)
-            alert_enhancements.append(enhancement_class(rule))
-        rule.alert_enhancements = alert_enhancements
+            if not issubclass(enhancement_class, reactor.enhancement.BaseEnhancement):
+                raise ConfigException('Enhancement module %s not a subclass of BaseEnhancement' % enhancement_name)
+            enhancements.append(enhancement_class(rule))
+        rule.enhancements = enhancements
 
         # Load alerters
         alerters = []

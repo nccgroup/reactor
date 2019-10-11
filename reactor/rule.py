@@ -183,8 +183,7 @@ class Rule(object):
 
         self._es_client = None
         self.alerters = []  # type: List[reactor.alerter.Alerter]
-        self.match_enhancements = []  # type: List[reactor.enhancement.MatchEnhancement]
-        self.alert_enhancements = []  # type: List[reactor.enhancement.AlertEnhancement]
+        self.enhancements = []  # type: List[reactor.enhancement.BaseEnhancement]
 
     @classmethod
     def schema_file(cls):

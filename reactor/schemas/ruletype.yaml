@@ -87,7 +87,7 @@ properties:
   use_local_time:
     type: boolean
     default: true
-  match_enhancements: {type: array, items: {type: string}}
+  enhancements: {type: array, items: {type: string}}
   query_key: {$ref: "common.yaml#/definitions/arrayOfStrings"}
   scan_entire_timeframe:
     type: boolean
