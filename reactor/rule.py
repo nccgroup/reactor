@@ -167,6 +167,7 @@ class AcceptsAggregationDataMixin(object):
 
 class Rule(object):
     _schema_file = None
+    _schema_relative = __file__
 
     def __init__(self, locator: str, hash: str, conf: dict):
         """
@@ -188,7 +189,7 @@ class Rule(object):
     @classmethod
     def schema_file(cls):
         """ Return the absolute path to the schema file. """
-        return os.path.join(os.path.dirname(__file__), cls._schema_file)
+        return os.path.join(os.path.dirname(cls._schema_relative), cls._schema_file)
 
     def _working_data(self):
         return WorkingData(self.conf('timestamp_field', '@timestamp'))

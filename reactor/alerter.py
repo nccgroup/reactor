@@ -153,6 +153,7 @@ class BasicMatchString(object):
 class Alerter(object):
 
     _schema_file = None
+    _schema_relative = __file__
 
     def __init__(self, rule: Rule, conf: dict):
         self.rule = rule
@@ -165,7 +166,7 @@ class Alerter(object):
     @classmethod
     def schema_file(cls):
         """ Return the absolute path to the schema file. """
-        return os.path.join(os.path.dirname(__file__), cls._schema_file)
+        return os.path.join(os.path.dirname(cls._schema_relative), cls._schema_file)
 
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
         """
