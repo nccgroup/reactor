@@ -1,4 +1,4 @@
-index: reactor
+writeback_index: reactor
 alert_alias: reactor_alerts
 max_processpool: 1
 

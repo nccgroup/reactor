@@ -1,8 +1,8 @@
 import jsonschema
 
 import reactor
-from reactor.util import dots_set_default, dots_set, dots_get, import_class, load_yaml
-from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
+from .util import dots_set_default, dots_set, dots_get, import_class, load_yaml
+from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 required_config = frozenset(['elasticsearch.host', 'elasticsearch.port'])
 
@@ -34,6 +34,11 @@ default_mappings = {
         'cardinality': reactor.rule.CardinalityRule,
         'metric_aggregation': reactor.rule.MetricAggregationRule,
         'percentage_match': reactor.rule.PercentageMatchRule,
+    },
+
+    # Default enhancements
+    'enhancement': {
+        'metadata': reactor.enhancement.MetaDataEnhancement,
     },
 
     # Default notifiers

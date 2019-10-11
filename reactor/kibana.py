@@ -4,8 +4,9 @@ import elasticsearch
 import json
 import os.path
 import urllib.parse
-from reactor.util import dt_to_ts, ts_to_dt, dots_get, elasticsearch_client
-from reactor.exceptions import ReactorException
+
+from .util import dt_to_ts, ts_to_dt, dots_get
+from .exceptions import ReactorException
 
 
 def ts_add(ts, td):

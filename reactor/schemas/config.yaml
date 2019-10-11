@@ -8,7 +8,10 @@ type: object
 required: [elasticsearch]
 
 properties:
-  index:
+  elasticsearch: {$ref: 'file:common.yaml#/definitions/elasticsearch'}
+
+
+  writeback_index:
     type: string
     title: "Writeback index (index prefix for ElasticSearch >= 6.x"
     default: "reactor"
@@ -25,6 +28,8 @@ properties:
     title: "Maximum number of processes to run rules in (capped between 1 and CPU count)"
     default: 0
     minimium: 0
+
+
   cluster:
     title: "Settings for a cluster of Reactor nodes"
     type: object
@@ -45,29 +50,34 @@ properties:
 
   alert_time_limit:
     default: {days: 2}
+    title: "Time limit for an alert to be successfully sent"
     allOf:
       - $ref: "common.yaml#/definitions/timeframe"
   old_query_limit:
     default: {weeks: 1}
+    title: "MThe maximum time between queries for Reactor to start at the most recently run query"
     allOf:
       - $ref: "common.yaml#/definitions/timeframe"
   max_aggregation:
     default: 10000
+    title: "Maximum number of alerts to aggregate together."
     type: integer
   string_multi_field_name:
     default: ~
+    title: "The suffix to use for the subfield for string mutli-fields in Elasticsearch"
     type: [string, 'null']
+
 
   reload:
     default: {seconds: 3}
+    title: "Duration to wait between checking for rule configuration changes"
     allOf:
       - {$ref: "common.yaml#/definitions/timeframe"}
   resend:
     default: {seconds: 30}
+    title: "Duration to wait between trying to send pending alerts"
     allOf:
       - {$ref: "common.yaml#/definitions/timeframe"}
-
-  elasticsearch: {$ref: 'file:common.yaml#/definitions/elasticsearch'}
 
 
   loader:
@@ -113,6 +123,21 @@ properties:
       _source_enabled:
         default: True
         type: boolean
+
+
+  notifiers:
+    type: object
+    title: "Set of notifiers to be fired on uncaught exceptions being raise"
+    additionalProperties:
+      type: object
+
+
+  plugins:
+    type: object
+    title: "Set of plugins to be run alongside Reactor"
+    default: {}
+    additionalProperties:
+      type: object
 
 
 
@@ -164,19 +189,4 @@ properties:
         default: {}
         additionalProperties:
           type: string
-
-
-  notifiers:
-    type: object
-    title: "Set of notifiers to be fired on uncaught exceptions being raise"
-    additionalProperties:
-      type: object
-
-
-  plugins:
-    type: object
-    title: "Set of plugins to be run alongside Reactor"
-    default: {}
-    additionalProperties:
-      type: object
 ...

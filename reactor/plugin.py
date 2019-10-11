@@ -6,8 +6,8 @@ import ssl
 import threading
 import time
 
-from reactor.reactor import Reactor
-from reactor.util import import_class
+from .reactor import Reactor
+from .util import import_class
 
 logging.getLogger('reactor.plugin').addHandler(logging.NullHandler())
 
@@ -68,17 +68,18 @@ class HttpServerPlugin(BasePlugin):
         def do_GET(self):
             if self.path == '/':
                 reactor = self.server.reactor  # type: Reactor
-                rules = {rule_locator: {} for rule_locator in reactor.loader.keys()}
-                for rule_locator in rules:
-                    rule = reactor.loader[rule_locator]
-                    rules[rule_locator] = {'running': rule_locator in reactor.raft.meta['executing'],
-                                           'time_taken': rule.data.time_taken}
                 response = {'up_time': time.monotonic(),
-                            'cluster': {'size': 1 + len(reactor.raft.neighbours),
+                            'cluster': {'size': len(reactor.raft.neighbourhood),
                                         'leader': reactor.raft.addr_to_str(reactor.raft.leader),
                                         'neighbourhood': list(map(reactor.raft.addr_to_str, reactor.raft.neighbourhood)),
                                         'changed': time.time() - reactor.raft.changed},
-                            'rules': rules}
+                            'rules': []}
+
+                for rule in reactor.loader:
+                    rule = {'locator': rule.locator,
+                            'running': rule.locator in reactor.raft.meta['executing'],
+                            'time_taken': rule.data.time_taken}
+                    response['rules'].append(rule)
             else:
                 return self.send_error(404, 'Not Found')
 

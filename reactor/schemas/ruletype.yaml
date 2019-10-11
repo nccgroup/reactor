@@ -1,6 +1,10 @@
 ---
 $schema: http://json-schema.org/draft-07/schema#
-definitions: {}
+definitions:
+  alerter:
+    type: object
+    additionalProperties:
+      type: object
 
 required: [type, index, alerters, buffer_time, run_every]
 type: object
@@ -27,18 +31,12 @@ properties:
   is_enabled:
     type: boolean
     default: true
-  es_host: {type: string}
-  es_port: {type: integer}
+  elasticsearch: {$ref: 'file:common.yaml#/definitions/elasticsearch'}
   index: {type: string}
   name: {type: string}
   description:
     type: [string, 'null']
     default: ''
-
-  use_ssl: {type: boolean}
-  verify_certs: {type: boolean}
-  es_username: {type: string}
-  es_password: {type: string}
   use_strftime_index: {type: boolean}
 
   # Optional Settings
@@ -62,7 +60,9 @@ properties:
   max_query_size: {type: integer}
 
   owner: {type: string}
-  priority: {type: integer}
+  priority:
+    type: integer
+    default: 2
 
   filter :
     type: array
@@ -87,7 +87,7 @@ properties:
   use_local_time:
     type: boolean
     default: true
-  match_enhancements: {type: array, items: {type: string}}
+  enhancements: {type: array, items: {type: string}}
   query_key: {$ref: "common.yaml#/definitions/arrayOfStrings"}
   scan_entire_timeframe:
     type: boolean
@@ -113,7 +113,11 @@ properties:
 
 
   # Alerter settings
-  alerters: {$ref: 'alerters.yaml'}
-
-
+  alerters:
+    default: []
+    oneOf:
+      - {$ref: "#/definitions/alerter"}
+      - type: array
+        items:
+          {$ref: "#/definitions/alerter"}
 ...

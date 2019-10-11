@@ -1,42 +1,116 @@
 
-# The index on the elasticsearch.host which is used for metadata storage
+# The writeback prefix on the elasticsearch.host which is used for metadata storage
 # This can be an unmapped index, but it is recommended that you run
 # `reactor init` to create the indices and set up the mappings
-index: reactor
+writeback_index: reactor
 # The alias for all alert indices
 # This is used by Reactor to search through existing alerts
 alert_alias: alerts
 
+# The writeback flush is the maximum number of calls to writeback before the cache
+# flushed and all entries sent to Elasticsearch. At the end of executing a rule the
+# cache is flushed
+#writeback_flush: 1000
+
+# Maximum amount of time to keep trying to send an alert
+#alert_time_limit:
+#  days: 2
+
+# The maximum time between queries for Reactor to start at the most recently run query.
+#old_query_limit:
+#  weeks: 1
+
+# The maximum number of alerts to aggregate together.
+#max_aggregation: 10000
+
+# If set, the suffix to use for the subfield for string multi-fields in Elasticsearch.
+#string_multi_field_name: ".keyword"
+
+# Frequency which to check with rules loader for changes
+#reload:
+#  seconds: 3
+
+# Frequency at which to attempt to retry failed alerters
+#resend:
+#  seconds: 30
+
+
+# The maximum number of workers that the process pool may have. Defaults to
+# the result of multiprocessing.cpu_count()
+#max_processpool: 0
+
+# The configuration for a Reactor cluster. `host` should be the hostname and port
+# that other nodes can each this one on. `neighbours` should be a list of nodes
+# which can optionally include `host`
+#cluster:
+#  host: "<hostname>:<port>"
+#  neighbours: ["<hostname>:<port>"]
+
 
 # Configuration to connect to the writeback ElasticSearch cluster
-elasticsearch:
+elasticsearch: &elasticsearch
   # ElasticSearch Hostname/IP address
-  host: ${ES_HOST:10.25.191.37}
+  host: ${ES_HOST:localhost}
   # ElasticSearch port
   port: ${ES_PORT:9200}
 
   # (optional) basic-auth username and password
-  username: ${ES_USER:monitor}
-  password: ${ES_PASSWORD:letmein}
+#  username: ${ES_USER:elastic}
+#  password: ${ES_PASSWORD:changeme}
 
   # (optional) Connect with TLS to ElasticSearch
-  ssl:
-    enabled: ${USE_SSL:true}
-    verify_certs: false
+#  ssl:
+#    enabled: ${USE_SSL:true}
+#    verify_certs: false
 #    ca_certs: ""
 #    client_cert: ""
 #    client_key: ""
 
 
 # Specify the location of the rules folder for the FileRuleLoader
-loader.config.rules_folder: rules
+loader:
+  # The type of rules loader to be used
+#  type: rules
+#  type: package.file.MyLoader
+  # The configuration object that the rules loader requires
+  config:
+    rules_folder: rules
 
-## Custom rule loader can be specified and configured
-#loader.type: package.module.MyRuleLoader
-#loader.config: {}
-## Customer rule loader with the loader specified in mappings
-#loader.type: my_loader
-#loader.config: {}
+
+# Default settings values for every rule
+rule:
+  # Connect to the same Elasticsearch cluster as writeback
+  elasticsearch: *elasticsearch
+#  # Frequency to run the rule
+#  run_every:
+#    minutes: 15
+#  # Amount of time to search back through
+#  buffer_time:
+#    hours: 1
+#    minutes: 30
+#  # Maximum number of hits to retrieve per query (Elasticsearch defaults to 10000)
+#  max_query_size: 10000
+#  # Amount of time to delay the query by
+#  query_delay:
+#    minutes: 5
+
+
+# The set of notifiers to be used
+#notifiers:
+#  # Settings for the email notifier
+#  email:
+#    format: html
+#    to: admin@example.com
+#    smtp_host: localhost
+#    smtp_port: 25
+#    from_addr: reactor@example.com
+#  my_notifier: {}
+
+
+# The set of plugins to run alongside reactor
+#plugins:
+#  my_plugin: {}
+
 
 ## Mappings allow you to set up/override human friendly names for regularly used classes
 #mappings:
@@ -49,5 +123,7 @@ loader.config.rules_folder: rules
 #    frequency: package.module.MyFrequencyRule
 #  enhancement:
 #    my_enhancement: package.module.MyEnhancement
-
-
+#  notifier:
+#    my_notifier: package.module.MyNotifier
+#  plugin:
+#    my_notifier: package.module.MyPlugin

@@ -1,22 +1,28 @@
 import setuptools
+import reactor
 
 with open('README.md', 'r') as fh:
     long_description = fh.read()
 
+with open('requirements.txt', 'r') as fh:
+    install_requirements = fh.read().split()
 setuptools.setup(
     name='reactor',
-    version='0.1.1',
-    author='Peter Scopes',
+    version=reactor.__version__,
+    author=reactor.__author__,
     author_email='peter.scopes@nccgroup.com',
+    maintainer=reactor.__author__,
+    maintainer_email='peter.scopes@nccgroup.com',
     description='Runs custom filters on Elasticsearch and alerts on matches',
     long_description=long_description,
     long_description_content_type='text/markdown',
+    keywords=['alerting', 'alerts', 'elasticsearch', 'SIEM', 'scalable', 'reliable', 'modular'],
     url='https://nccgroup.com/',
     setup_requires='setuptools',
     packages=setuptools.find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     exclude_package_data={},
     license='Copyright 2019 NCC Group',
-    platforms=('OS Independent',),
+    platforms=['OS Independent'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
@@ -29,15 +35,8 @@ setuptools.setup(
         'Topic :: Security',
     ],
     entry_points={
-        'console_scripts': ['reactor=reactor.__main__']},
+        'console_scripts': ['reactor=reactor.__main__:main']},
     package_data={'reactor': ['schemas/*.yaml', 'mappings/**/*.json']},
-    install_requires=[
-        'apscheduler>=3.6.0',
-        'croniter>=0.3.30',
-        'elasticsearch>=6.0.0<7.0.0',
-        'jsonschema>=3.0.0',
-        'python-dateutil~=2.8.0',
-        'PyYAML>=5.1.1',
-        'requests>=2.0.0',
-    ]
+    python_requires='>=3.6',
+    install_requires=install_requirements,
 )

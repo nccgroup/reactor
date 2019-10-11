@@ -1,10 +1,10 @@
 import curses
-import os
-import texttable as tt
 import time
 
-from reactor.reactor import Reactor
-from reactor.util import ts_to_dt, pretty_ts, dt_now
+import texttable as tt
+
+from .reactor import Reactor
+from .util import ts_to_dt, pretty_ts, dt_now
 
 highlight = []
 cache = {}
@@ -171,7 +171,7 @@ def generate_table(client: Reactor, index: str, max_hits: int, page: int = 0):
         tab.set_deco(tab.HEADER | tab.VLINES | tab.HLINES)
 
         if index == 'status':
-            index = client.get_writeback_index('status')
+            index = client.core.get_writeback_index('status')
             tab.header(['Timestamp', 'Rule UUID', 'Rule Name', 'Start Time', 'End Time', 'Time Taken (s)', 'Matches', 'Hits'])
             tab.set_cols_dtype(['t', 't', 't', 't', 't', 'f', 'i', 'i'])
             tab.set_cols_align(['l', 'l', 'l', 'l', 'l', 'r', 'r', 'r'])
@@ -199,11 +199,11 @@ def generate_table(client: Reactor, index: str, max_hits: int, page: int = 0):
             total = int(res['hits']['total'])
 
         elif index == 'error':
-            index = client.get_writeback_index('error')
-            tab.header(['Timestamp', 'Data', 'Message', 'Traceback'])
-            column = ['@timestamp', 'data', 'message', 'traceback']
-            tab.set_cols_dtype(['t', 'a', 't', 't'])
-            tab.set_cols_align(['l', 'l', 'l', 'l'])
+            index = client.core.get_writeback_index('error')
+            tab.header(['Timestamp', 'Rule UUID', 'Data', 'Message', 'Traceback'])
+            column = ['@timestamp', 'rule_uuid', 'data', 'message', 'traceback']
+            tab.set_cols_dtype(['t', 't', 'a', 't', 't'])
+            tab.set_cols_align(['l', 't', 'l', 'l', 'l'])
 
             query = {'sort': {column[0]: 'desc'}}
             res = client.es_client.search(index=index, size=max_hits, from_=offset, body=query)
@@ -216,7 +216,7 @@ def generate_table(client: Reactor, index: str, max_hits: int, page: int = 0):
             total = int(res['hits']['total'])
 
         elif index == 'silence':
-            index = client.get_writeback_index('silence')
+            index = client.core.get_writeback_index('silence')
             tab.header(['Timestamp', 'Rule UUID', 'Until', 'Exponent', 'Silence Key', 'Alert UUID'])
             tab.set_cols_dtype(['t', 't', 't', 'i', 't', 't'])
             tab.set_cols_align(['l', 't', 'l', 'r', 'l', 'l'])

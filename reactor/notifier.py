@@ -4,8 +4,8 @@ import socket
 from email.mime.text import MIMEText
 from email.utils import formatdate
 
-from reactor.exceptions import ReactorException
-from reactor.util import load_yaml, reactor_logger
+from .exceptions import ReactorException
+from .util import load_yaml, reactor_logger
 
 
 def get_account(account_file: str, relative_file: str = None) -> (str, str):
@@ -73,7 +73,7 @@ class EmailNotifier(BaseNotifier):
 
     def notify(self, subject: str, body: str) -> None:
         to_addr = self.conf['to']
-        if self.conf.get('email_format') == 'html':
+        if self.conf.get('format') == 'html':
             email_msg = MIMEText(body.encode('UTF-8'), 'html', _charset='UTF-8')
         else:
             email_msg = MIMEText(body.encode('UTF-8'), _charset='UTF-8')

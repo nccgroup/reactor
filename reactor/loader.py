@@ -9,14 +9,25 @@ import jsonschema
 import yaml
 
 import reactor.enhancement
-from reactor.exceptions import ReactorException, ConfigException
-from reactor.rule import Rule
-from reactor.util import (
+from .exceptions import ReactorException, ConfigException
+from .rule import Rule
+from .util import (
     reactor_logger,
     load_yaml,
     import_class
 )
-from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
+from .validator import yaml_schema, SetDefaultsDraft7Validator
+
+
+_schemas = {}
+""" Store """
+
+
+def _validator(schema_file: str):
+    """ Return a loaded validator based on the specified file. """
+    if schema_file not in _schemas:
+        _schemas[schema_file] = yaml_schema(SetDefaultsDraft7Validator, schema_file)
+    return _schemas[schema_file]
 
 
 class RuleLoader(object):
@@ -37,6 +48,7 @@ class RuleLoader(object):
         self.rules = {}  # type: typing.Dict[str, Rule]
         self._loaded = False
         self._disabled = {}
+        self._schemas = {}
 
     def __iter__(self) -> Iterator[Rule]:
         return iter(self.rules.values())
@@ -201,9 +213,11 @@ class RuleLoader(object):
 
         # Validate the specific rule type
         try:
-            rule_type.rule_schema.validate(conf)
+            _validator(rule_type.schema_file()).validate(conf)
         except jsonschema.ValidationError as e:
             raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
+        except Exception as e:
+            print(str(e))
 
         # Instantiate Rule
         try:
@@ -258,41 +272,40 @@ class RuleLoader(object):
         # (%y = short year, %M = minutes, %D = full date)
         if rule.conf('use_strftime_index'):
             for token in ['%y', '%M', '%D']:
-                if token in rule.conf('index'):
+                if token in rule.conf('writeback_index'):
                     reactor_logger.warning('Did you mean to use %s in the index?'
                                            'The index will for formatted like %s' % (token,
                                                                                      datetime.datetime.now().strftime(
-                                                                                         rule.conf('index'))))
+                                                                                         rule.conf('writeback_index'))))
 
     @staticmethod
-    def load_modules(rule: Rule, mappings: dict):
+    def load_modules(rule: Rule, mappings: dict) -> None:
         """ Loads things that could be modules. Enhancements, alerters, and rule type. """
-        # Load match enhancements
-        match_enhancements = []
-        for enhancement_name in rule.conf('match_enhancements', []):
+        # Load enhancements
+        enhancements = []
+        for enhancement_name in rule.conf('enhancements', []):
             enhancement_class = import_class(enhancement_name, mappings['enhancement'], reactor.enhancement)
-            if not issubclass(enhancement_class, reactor.enhancement.MatchEnhancement):
-                raise ConfigException('Enhancement module %s not a subclass of MatchEnhancement' % enhancement_name)
-            match_enhancements.append(enhancement_class(rule))
-        rule.match_enhancements = match_enhancements
-
-        # Load alert enhancements
-        alert_enhancements = []
-        for enhancement_name in rule.conf('alert_enhancements', []):
-            enhancement_class = import_class(enhancement_name, mappings['enhancement'], reactor.enhancement)
-            if not issubclass(enhancement_class, reactor.enhancement.AlertEnhancement):
-                raise ConfigException('Enhancement module %s not a subclass of AlertEnhancement' % enhancement_name)
-            alert_enhancements.append(enhancement_class(rule))
-        rule.alert_enhancements = alert_enhancements
+            if not issubclass(enhancement_class, reactor.enhancement.BaseEnhancement):
+                raise ConfigException('Enhancement module %s not a subclass of BaseEnhancement' % enhancement_name)
+            enhancements.append(enhancement_class(rule))
+        rule.enhancements = enhancements
 
         # Load alerters
         alerters = []
-        for alerter_name in rule.conf('alerters'):
-            alerter_conf = copy.deepcopy(rule.conf('alerters')[alerter_name])
-            alerter_class = import_class(alerter_name, mappings['alerter'], reactor.alerter)
-            if not issubclass(alerter_class, reactor.alerter.Alerter):
-                raise ReactorException('Alerter module %s is not a subclass of Alerter' % alerter_class)
-            alerters.append(alerter_class(rule, alerter_conf))
+        if type(rule.conf('alerters')) == dict:
+            rule.set_conf('alerters', [rule.conf('alerters')])
+        for alerter in rule.conf('alerters'):
+            for alerter_name in alerter:
+                alerter_conf = copy.deepcopy(alerter[alerter_name])
+                alerter_class = import_class(alerter_name, mappings['alerter'], reactor.alerter)
+                if not issubclass(alerter_class, reactor.alerter.Alerter):
+                    raise ReactorException('Alerter module %s is not a subclass of Alerter' % alerter_class)
+                # Validate the alerter configuration
+                try:
+                    _validator(alerter_class.schema_file()).validate(alerter_conf)
+                except jsonschema.ValidationError as e:
+                    raise ConfigException('Invalid rule configuration: %s\n%s' % (rule.locator, e))
+                alerters.append(alerter_class(rule, alerter_conf))
         rule.alerters = alerters
 
 
@@ -327,13 +340,19 @@ class FileRuleLoader(RuleLoader):
         return list(rules.values())
 
     def get_hash(self, locator: str) -> str:
+        """
+        Generate a hash of the contents of the rule file and all of imported file.
+        Incorporates the modification time of each file.
+        """
         rule_hash = hashlib.sha256()
         if os.path.exists(locator):
             with open(locator) as fh:
                 rule_hash.update(fh.read().encode('utf-8'))
+                rule_hash.update(str(os.path.getmtime(locator)).encode('utf-8'))
             for import_locator in self.rule_imports.get(locator, []):
                 with open(import_locator) as fh:
                     rule_hash.update(fh.read().encode('utf-8'))
+                    rule_hash.update(str(os.path.getmtime(import_locator)).encode('utf-8'))
         return rule_hash.hexdigest()
 
     def get_yaml(self, locator: str) -> dict:

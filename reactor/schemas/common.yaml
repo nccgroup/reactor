@@ -64,6 +64,16 @@ definitions:
         examples:
         - changeme
 
+      aws_region:
+        type: [string, 'null']
+        title: "AWS region"
+        default: ~
+      profile:
+        type: [string, 'null']
+        title: "AWS profile"
+        default: ~
+
+
       ssl:
         type: object
         title: "TLS connection configuration"
@@ -97,4 +107,22 @@ definitions:
             title: "Path to client private key"
             examples:
             - /var/ssl/elasticsearch/client.key
+
+  emails:
+    oneOf:
+    - type: string
+      format: email
+    - type: array
+      items:
+        type: string
+        format: email
+
+  urls:
+    oneOf:
+    - type: string
+      format: url
+    - type: array
+      items:
+        type: string
+        format: url
 ...

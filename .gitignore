@@ -4,10 +4,11 @@
 /build/
 /certs/
 /dist/
+/docs/build/
 /env/
 /rules/
 /venv/
-/config.yaml
+/*.yaml
 /*.jsonl
 /*.ndjson
 

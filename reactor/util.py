@@ -2,7 +2,6 @@ import collections
 import datetime
 import logging
 import os
-import pytz
 import re
 import sys
 import time
@@ -11,10 +10,11 @@ import uuid
 import dateutil
 import dateutil.parser
 import elasticsearch
+import pytz
 import yaml
 
 import reactor.auth
-from reactor.exceptions import ReactorException
+from .exceptions import ReactorException
 
 reactor_logger = logging.getLogger('reactor')
 reactor_logger.setLevel(logging.INFO)

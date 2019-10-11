@@ -1,5 +1,6 @@
 import copy
 import datetime as dt
+import os
 import time
 from typing import Generator, List, Optional
 
@@ -7,9 +8,9 @@ import elasticsearch
 from sortedcontainers import SortedKeyList
 
 import reactor.enhancement
-from reactor.exceptions import ConfigException, ReactorException, QueryException
-from reactor.kibana import filters_from_kibana
-from reactor.util import (
+from .exceptions import ConfigException, ReactorException, QueryException
+from .kibana import filters_from_kibana
+from .util import (
     dots_get, dots_set,
     generate_id, hashable,
     ts_to_dt, unix_to_dt, unixms_to_dt, ts_to_dt_with_format,
@@ -21,7 +22,6 @@ from reactor.util import (
     ElasticSearchClient, elasticsearch_client,
     add_raw_postfix, format_index,
 )
-from reactor.validator import yaml_schema, SetDefaultsDraft7Validator
 
 
 class WorkingData(object):
@@ -166,7 +166,8 @@ class AcceptsAggregationDataMixin(object):
 
 
 class Rule(object):
-    rule_schema = None
+    _schema_file = None
+    _schema_relative = __file__
 
     def __init__(self, locator: str, hash: str, conf: dict):
         """
@@ -182,8 +183,12 @@ class Rule(object):
 
         self._es_client = None
         self.alerters = []  # type: List[reactor.alerter.Alerter]
-        self.match_enhancements = []  # type: List[reactor.enhancement.MatchEnhancement]
-        self.alert_enhancements = []  # type: List[reactor.enhancement.AlertEnhancement]
+        self.enhancements = []  # type: List[reactor.enhancement.BaseEnhancement]
+
+    @classmethod
+    def schema_file(cls):
+        """ Return the absolute path to the schema file. """
+        return os.path.join(os.path.dirname(cls._schema_relative), cls._schema_file)
 
     def _working_data(self):
         return WorkingData(self.conf('timestamp_field', '@timestamp'))
@@ -271,10 +276,8 @@ class Rule(object):
         if self.conf('top_count_keys') and self.conf('raw_count_keys', True):
             if self.conf('string_multi_field_name'):
                 string_multi_field_name = self.conf('string_multi_field_name')
-            elif self.es_client.es_version_at_least(5):
-                string_multi_field_name = '.keyword'
             else:
-                string_multi_field_name = '.raw'
+                string_multi_field_name = '.keyword'
 
             for i, key in enumerate(self.conf('top_count_keys')):
                 if not key.endswith(string_multi_field_name):
@@ -776,7 +779,7 @@ class Rule(object):
 
 
 class AnyRule(AcceptsHitsDataMixin, Rule):
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-any.yaml', __file__)
+    _schema_file = 'schemas/ruletype-any.yaml'
 
     """ A rule that will match on any input data. """
     def add_hits_data(self, data: list) -> Generator[dict, None, None]:
@@ -791,7 +794,6 @@ class AnyRule(AcceptsHitsDataMixin, Rule):
 
 class CompareRule(AcceptsHitsDataMixin, Rule):
     """ A base class for matching a specific term by passing it to a compare function. """
-    required_options = frozenset(['compound_compare_key'])
 
     def expand_entries(self, list_type: str):
         """
@@ -824,9 +826,8 @@ class CompareRule(AcceptsHitsDataMixin, Rule):
 
 class BlacklistRule(CompareRule):
     """ A CompareRule where the compare function checks a given key against a blacklist. """
-    required_options = frozenset(['compare_key', 'blacklist'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-blacklist.yaml', __file__)
+    _schema_file = 'schemas/ruletype-blacklist.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(BlacklistRule, self).__init__(locator, hash, conf)
@@ -856,9 +857,8 @@ class BlacklistRule(CompareRule):
 
 class WhitelistRule(CompareRule):
     """ A CompareRule where the compare function checks a given key against a whitelist. """
-    required_options = frozenset(['compare_key', 'whitelist', 'ignore_null'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-whitelist.yaml', __file__)
+    _schema_file = 'schemas/ruletype-whitelist.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(WhitelistRule, self).__init__(locator, hash, conf)
@@ -891,9 +891,8 @@ class WhitelistRule(CompareRule):
 
 class ChangeRule(CompareRule):
     """ A rule that will store values for a certain term and match if those values change. """
-    required_options = frozenset(['query_key', 'compound_compare_key', 'ignore_null'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-change.yaml', __file__)
+    _schema_file = 'schemas/ruletype-change.yaml'
 
     change_map = {}
     occurrence_time = {}
@@ -902,6 +901,7 @@ class ChangeRule(CompareRule):
         key = hashable(dots_get(event, self._conf['query_key']))
         values = []
         reactor_logger.debug('Previous values of compare keys: %s', self._data.occurrences)
+        # compound_compare_key is generated automatically from compare_key
         for val in self._conf['compound_compare_key']:
             lookup_value = dots_get(event, val)
             values.append(lookup_value)
@@ -951,9 +951,8 @@ class ChangeRule(CompareRule):
 
 class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that matches if num_events number of events occur within a timeframe. """
-    required_options = frozenset(['num_events', 'timeframe'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,  'schemas/ruletype-frequency.yaml', __file__)
+    _schema_file = 'schemas/ruletype-frequency.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(FrequencyRule, self).__init__(locator, hash, conf)
@@ -1044,9 +1043,8 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
 
 class FlatlineRule(FrequencyRule):
     """ A FrequencyRule that matches when there is low number of events within a timeframe. """
-    required_options = frozenset(['timeframe', 'threshold'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-flatline.yaml', __file__)
+    _schema_file = 'schemas/ruletype-flatline.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(FlatlineRule, self).__init__(locator, hash, conf)
@@ -1129,9 +1127,8 @@ class FlatlineRule(FrequencyRule):
 
 class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that uses two sliding windows to compare relative event frequency. """
-    required_options = frozenset(['timeframe', 'spike_height', 'spike_type'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-spike.yaml', __file__)
+    _schema_file = 'schemas/ruletype-spike.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(SpikeRule, self).__init__(locator, hash, conf)
@@ -1295,7 +1292,7 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
 
 
 class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-new_term.yaml', __file__)
+    _schema_file = 'schemas/ruletype-new_term.yaml'
 
     """ A Rule that detects a new value in a list of fields. """
     # TODO: alter self.seen_values to be a mapping of value to timestamp of last seen - add option to forget old terms
@@ -1558,9 +1555,8 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
 
 class CardinalityRule(AcceptsHitsDataMixin, Rule):
     """ A Rule that matches if cardinality of a field is above or below a threshold within a timeframe. """
-    required_options = frozenset(['timeframe', 'cardinality_field'])
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-cardinality.yaml', __file__)
+    _schema_file = 'schemas/ruletype-cardinality.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(CardinalityRule, self).__init__(locator, hash, conf)
@@ -1698,9 +1694,7 @@ class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
 class MetricAggregationRule(BaseAggregationRule):
     """ A Rule that matches when there is a low number of events within a timeframe. """
 
-    required_options = frozenset(['metric_agg_key', 'metric_agg_type'])
-
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator,  'schemas/ruletype-metric_aggregation.yaml', __file__)
+    _schema_file = 'schemas/ruletype-metric_aggregation.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(MetricAggregationRule, self).__init__(locator, hash, conf)
@@ -1776,7 +1770,7 @@ class MetricAggregationRule(BaseAggregationRule):
 class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
     """ A rule that matches when there is a spike in an aggregated event compared to its reference window, """
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-spike_metric_aggregation.yaml', __file__)
+    _schema_file = 'schemas/ruletype-spike_metric_aggregation.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(SpikeMetricAggregationRule, self).__init__(locator, hash, conf)
@@ -1852,9 +1846,9 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
 
 
 class PercentageMatchRule(BaseAggregationRule):
-    required_options = frozenset(['match_bucket_filter'])
+    """ A Rule that matches when there is percentage violation of match_bucket_filter hits of the total hits. """
 
-    rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype-percentage_match.yaml', __file__)
+    _schema_file = 'schemas/ruletype-percentage_match.yaml'
 
     def __init__(self, locator: str, hash: str, conf: dict):
         super(PercentageMatchRule, self).__init__(locator, hash, conf)
