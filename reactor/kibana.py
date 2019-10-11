@@ -16,14 +16,14 @@ def ts_add(ts, td):
 
 def generate_kibana4_db(rule, match):
     """ Creates a link for a kibana4 dashboard which has time set to the match. """
-    db_name = rule.get('use_kibana4_dashboard')
+    db_name = rule.conf('use_kibana4_dashboard')
     start = ts_add(
-        dots_get(match, rule['timestamp_field']),
-        -rule.get('kibana4_start_timedelta', rule.get('timeframe', datetime.timedelta(minutes=10)))
+        dots_get(match, rule.conf('timestamp_field')),
+        -rule.conf('kibana4_start_timedelta', rule.conf('timeframe', datetime.timedelta(minutes=10)))
     )
     end = ts_add(
-        dots_get(match, rule['timestamp_field']),
-        rule.get('kibana4_end_timedelta', rule.get('timeframe', datetime.timedelta(minutes=10)))
+        dots_get(match, rule.conf('timestamp_field')),
+        rule.conf('kibana4_end_timedelta', rule.conf('timeframe', datetime.timedelta(minutes=10)))
     )
     return kibana4_dashboard_link(db_name, start, end)
 
@@ -35,13 +35,13 @@ def generate_kibana_db(rule, match, index):
 
     # Set timestamp fields to match our rule especially if
     # we have configured something other than @timestamp
-    set_timestamp_field(db, rule['timestamp_field'])
+    set_timestamp_field(db, rule.conf('timestamp_field'))
 
     # Set filters
-    for sub_filter in rule['filter']:
+    for sub_filter in rule.conf('filter'):
         if sub_filter:
             add_filter(db, sub_filter)
-    set_included_fields(db, rule['include'])
+    set_included_fields(db, rule.conf('include'))
 
     # Set index
     set_index_name(db, index)
@@ -53,24 +53,24 @@ def upload_dashboard(db, rule, match):
     """ Uploads a dashboard schema to the kibana-int Elasticsearch index associated with rule.
     Returns the url to the dashboard. """
     # Set time range
-    start = ts_add(dots_get(match, rule['timestamp_field']), -rule.get('timeframe', datetime.timedelta(minutes=10)))
-    end = ts_add(dots_get(match, rule['timestamp_field']), datetime.timedelta(minutes=10))
+    start = ts_add(dots_get(match, rule.conf('timestamp_field')), -rule.conf('timeframe', datetime.timedelta(minutes=10)))
+    end = ts_add(dots_get(match, rule.conf('timestamp_field')), datetime.timedelta(minutes=10))
     set_time(db, start, end)
 
     # Set dashboard name
-    db_name = 'Reactor - %s - %s' % (rule['name'], end)
+    db_name = 'Reactor - %s - %s' % (rule.name, end)
     set_name(db, db_name)
 
     # Add filter for query_key value
     if 'query_key' in rule:
-        for qk in rule.get('compound_query_key', [rule['query_key']]):
+        for qk in rule.conf('compound_query_key', [rule.conf('query_key')]):
             if qk in match:
                 term = {'term': {qk: match[qk]}}
                 add_filter(db, term)
 
     # Add filter for aggregation_key value
     if 'aggregation_key' in rule:
-        for qk in rule.get('compound_aggregation_key', [rule['aggregation_key']]):
+        for qk in rule.conf('compound_aggregation_key', [rule.conf('aggregation_key')]):
             if qk in match:
                 term = {'term': {qk: match[qk]}}
                 add_filter(db, term)
@@ -83,17 +83,16 @@ def upload_dashboard(db, rule, match):
                'dashboard': db_js}
 
     # Upload
-    es = elasticsearch_client(rule['elasticsearch'])
     # TODO: doc_type = _doc for elastic >= 6 and index may have changed
-    res = es.index(index='kibana-int',
-                   doc_type='temp',
-                   body=db_body)
+    res = rule.es_client.index(index='kibana-int',
+                               doc_type='temp',
+                               body=db_body)
 
     # Return dashboard URL
-    kibana_url = rule.get('kibana_url')
+    kibana_url = rule.conf('kibana_url')
     if not kibana_url:
-        kibana_url = 'http://%s:%s/_plugin/kibana/' % (rule['es_host'],
-                                                       rule['es_port'])
+        kibana_url = 'http://%s:%s/_plugin/kibana/' % (rule.conf('elasticsearch.host'),
+                                                       rule.conf('elasticsearch.port'))
     return kibana_url + '#/dashboard/temp/%s' % (res['_id'])
 
 
@@ -127,12 +126,12 @@ def use_kibana_link(rule, match):
     """ Uploads an existing dashboard as a temp dashboard modified for match time.
     Returns the url to the dashboard. """
     # Download or get cached dashboard
-    dashboard = rule.get('dashboard_schema')
+    dashboard = rule.conf('dashboard_schema')
     if not dashboard:
-        db_name = rule.get('use_kibana_dashboard')
+        db_name = rule.conf('use_kibana_dashboard')
         dashboard = get_dashboard(rule, db_name)
     if dashboard:
-        rule['dashboard_schema'] = dashboard
+        rule.set_conf('dashboard_schema', dashboard)
     else:
         return None
     dashboard = copy.deepcopy(dashboard)
@@ -142,7 +141,7 @@ def use_kibana_link(rule, match):
 def filters_from_kibana(rule, db_name):
     """ Downloads a dashboard from Kibana and returns corresponding filters, None on error. """
     try:
-        db = rule.get('dashboard_schema')
+        db = rule.conf('dashboard_schema')
         if not db:
             db = get_dashboard(rule, db_name)
         filters = filters_from_dashboard(db)
