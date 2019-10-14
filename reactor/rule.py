@@ -377,8 +377,8 @@ class Rule(object):
         :param sort: asc|desc|None
         :param timestamp_field:
         """
-        start_time = self.dt_to_ts(start_time)
-        end_time = self.dt_to_ts(end_time)
+        start_time = self.dt_to_ts(start_time) if start_time else None
+        end_time = self.dt_to_ts(end_time) if end_time else None
         filters = copy.copy(filters)
         if start_time and end_time:
             filters.insert(0, {'range': {timestamp_field: {'gt': start_time, 'lte': end_time}}})
