@@ -248,11 +248,12 @@ def generate_table(client: Reactor, index: str, max_hits: int, page: int = 0):
                         # 'Match Time',
                         'Alert UUID',
                         'Rule Name',
+                        'Priority',
                         'Duration',
                         'Num Matches',
                         'Num Events'])
-            tab.set_cols_dtype(['t', 't', 't', 't', 't', 't', 'i', 'i'])
-            tab.set_cols_align(['r', 'l', 'l', 'c', 'l', 'r', 'r', 'r'])
+            tab.set_cols_dtype(['t', 't', 't', 't', 't', 't', 't', 'i', 'i'])
+            tab.set_cols_align(['r', 'l', 'l', 'c', 'l', 'r', 'r', 'r', 'r'])
 
             query = {'sort': {'match_time': 'desc'}}
             res = client.es_client.search(index=index, size=max_hits, from_=offset, body=query)
@@ -268,6 +269,7 @@ def generate_table(client: Reactor, index: str, max_hits: int, page: int = 0):
                     # pretty_ts(ts_to_dt(source.pop('match_time')), False),
                     source.pop('uuid'),
                     source.pop('rule_name'),
+                    source.pop('priority'),
                     str(ts_to_dt(source['match_data']['ended_at'])-ts_to_dt(source['match_data']['began_at'])).split('.')[0],
                     source['num_matches'],
                     source['match_data']['num_events'],
