@@ -128,6 +128,7 @@ properties:
   notifiers:
     type: object
     title: "Set of notifiers to be fired on uncaught exceptions being raise"
+    default: {}
     additionalProperties:
       type: object
 
