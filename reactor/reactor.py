@@ -487,7 +487,7 @@ class Core(object):
 
         return writeback_index
 
-    def writeback(self, doc_type, writeback_body, rule=None, doc_id=None, update=False) -> Optional[dict]:
+    def writeback(self, doc_type, writeback_body, rule=None, doc_id=None, update=False) -> Optional[bool]:
         for key in writeback_body.keys():
             # Convert any datetime objects to timestamps
             if isinstance(writeback_body[key], datetime.datetime):
@@ -777,7 +777,7 @@ class Core(object):
             alert['aggregate_id'] = agg_id
         if aggregation_key_value:
             alert['aggregation_key'] = aggregation_key_value
-        res = self.writeback('alert', alert, rule)
+        res = self.writeback('alert', alert, rule, doc_id=alert['uuid'])
 
         # If new aggregation, save id
         if res and not agg_id:
