@@ -360,9 +360,6 @@ def main(args: list = None):
     args = args or sys.argv[1:]
     signal.signal(signal.SIGINT, handle_signal)
 
-    # Silence the APScheduler logs
-    logging.getLogger('apscheduler').addHandler(logging.NullHandler())
-
     parser, args = parse_args(args)
     if args['action'] is None:
         parser.print_help()
@@ -370,6 +367,10 @@ def main(args: list = None):
 
     if args['log_level']:
         reactor_logger.setLevel(args['log_level'])
+
+    # Silence the APScheduler logs if not in DEBUG mode
+    if reactor_logger.level > logging.DEBUG:
+        logging.getLogger('apscheduler').addHandler(logging.NullHandler())
 
     if args['disable_warnings']:
         urllib3.disable_warnings()
