@@ -427,12 +427,16 @@ class Reactor(object):
         if self.conf['notifiers']:
             self.send_notification(exception=exception, rule=rule)
 
-    def send_notification(self, body='', exception=None, rule=None, subject=None, rule_file=None):
+    def send_notification(self, body: str = '',
+                          exception: BaseException = None,
+                          rule: Rule = None,
+                          subject: str = None,
+                          rule_file: str = None):
         """ Send a notification via all configured notifiers. """
         subject = subject or'Reactor notification'
         rule_name = None
         if rule:
-            rule_name = rule['name']
+            rule_name = rule.name
         elif rule_file:
             rule_name = rule_file
         if exception and rule_name:
