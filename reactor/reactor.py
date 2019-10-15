@@ -300,7 +300,7 @@ class Reactor(object):
             # Add/modify rules in the scheduler
             for rule_locator in distributed_rules:
                 if not self.running or self.terminate_called > 0 or rule_locator not in self.loader:
-                    # TODO: rule_locator should always be in self.loader
+                    # rule_locator should always be in self.loader, but just in case
                     continue
 
                 rule = self.loader[rule_locator]
