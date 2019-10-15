@@ -144,6 +144,9 @@ class Reactor(object):
         # Ensure ElasticSearch is responsive
         if not self.wait_until_responsive(timeout=self.args['timeout']):
             return 1
+        if not self.es_client.es_version_at_least(5):
+            reactor_logger.fatal('Unsupported version of ElasticSearch: %s', self.es_client.es_version)
+            return 2
 
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         reactor_logger.info('Starting up (max_processpool=%s cluster_size=%s)',

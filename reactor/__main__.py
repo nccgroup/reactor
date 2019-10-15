@@ -232,6 +232,9 @@ def perform_init(config: dict, args: dict) -> int:
     es_client = elasticsearch_client(config['elasticsearch'])
     if not es_client.wait_until_responsive(args['timeout']):
         return 1
+    if not es_client.es_version_at_least(5):
+        reactor_logger.fatal('Unsupported version of ElasticSearch: %s', es_client.es_version)
+        return 2
 
     from reactor.init import create_indices
     create_indices(es_client, config, args['recreate'], args['old_index'], args['force'])
