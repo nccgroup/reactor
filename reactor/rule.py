@@ -1595,7 +1595,7 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
                 ended_time)
         else:
             return 'Less than  %d unique %s(s) occurred since last alert or between %s and %s\n\n' % (
-                self._conf['max_cardinality'],
+                self._conf['min_cardinality'],
                 self.cardinality_field,
                 began_time,
                 ended_time)
