@@ -144,6 +144,9 @@ def load_yaml(filename: str) -> dict:
         yaml_loader.add_implicit_resolver(r'!env', env_matcher, None)
         yaml_loader.add_constructor(r'!env', env_constructor)
 
+    if not os.path.exists(filename):
+        raise ReactorException('No such file "%s"' % filename)
+
     with open(filename) as fh:
         return yaml.load(fh, yaml_loader)
 
