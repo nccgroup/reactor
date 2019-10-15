@@ -998,7 +998,7 @@ class Core(object):
                         rule.data.num_duplicates += old_len - len(data)
             except QueryException as e:
                 self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query}, rule=rule)
-                return None
+                return []
 
             # There was an exception while querying
             if data is None:
@@ -1021,7 +1021,7 @@ class Core(object):
 
         # Tidy up scroll_id (after scrolling is finished)
         rule.data.scroll_id = None
-        return data
+        rule.data.hits.extend(data)
 
     def garbage_collect(self, rule: Rule):
         """ Collect the garbage after running a rule. """

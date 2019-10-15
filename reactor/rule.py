@@ -27,6 +27,7 @@ from .util import (
 class WorkingData(object):
     def __init__(self, ts_field: str):
         # Counters
+        self.hits = []
         self.num_hits = 0
         self.num_duplicates = 0
         self.total_hits = 0
@@ -64,6 +65,7 @@ class WorkingData(object):
     def reset(self):
         """ Reset working data ready for the rule to be run. """
         # Reset the rule counters.
+        self.hits = []
         self.num_hits = 0
         self.num_duplicates = 0
         self.total_hits = 0
