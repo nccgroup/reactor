@@ -2,6 +2,7 @@ import argparse
 import logging
 import signal
 import sys
+import time
 import traceback
 
 import urllib3
@@ -135,6 +136,10 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                         dest='es_debug_trace',
                         metavar='FILENAME',
                         help='Log ElasticSearch queries as curl commands in specified file')
+    run_sp.add_argument('--plugins-only',
+                        action='store_true',
+                        dest='plugins_only',
+                        help='Only run the plugins specified in the config file')
     run_sp.add_argument('rules',
                         nargs='*',
                         help='Limit running to the specified rules')
@@ -347,7 +352,12 @@ def perform_run(config: dict, args: dict) -> int:
         plugins[plugin_type].start()
 
     # Start reactor
-    exit_code = reactor.start()
+    if not args['plugins_only']:
+        exit_code = reactor.start()
+    else:
+        while reactor.running:
+            time.sleep(0.5)
+        exit_code = 0
 
     # Shutdown the plugins
     for plugin in plugins.values():
