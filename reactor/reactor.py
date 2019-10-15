@@ -633,6 +633,11 @@ class Core(object):
             if kb_link:
                 alerts[0]['kibana_link'] = kb_link
 
+        if rule.conf('generate_kibana_discover_url'):
+            kb_link = reactor.kibana.generate_kibana_discover_url(rule, alerts[0])
+            if kb_link:
+                alerts[0]['kibana_discover_url'] = kb_link
+
         # Enhancements were already run at match time if `run_enhancements_first` is set or retried=True,
         # which means this is a retry of a failed alert
         if not rule.conf('run_enhancements_first') and not retried:

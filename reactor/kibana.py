@@ -1,12 +1,15 @@
 import copy
 import datetime
-import elasticsearch
 import json
 import os.path
 import urllib.parse
+from typing import Optional
 
-from .util import dt_to_ts, ts_to_dt, dots_get
+import elasticsearch
+import prison
+
 from .exceptions import ReactorException
+from .util import dt_to_ts, ts_to_dt, dots_get, reactor_logger
 
 
 def ts_add(ts, td):
@@ -429,3 +432,186 @@ def kibana4_dashboard_link(dashboard, start_time, end_time):
     time_settings = kibana4_time_temp % (start_time, end_time)
     time_settings = urllib.parse.quote(time_settings)
     return "%s?_g=%s" % (dashboard, time_settings)
+
+
+kibana_default_timedelta = datetime.timedelta(minutes=10)
+
+kibana5_kibana6_versions = frozenset(['5.6', '6.0', '6.1', '6.2', '6.3', '6.4', '6.5', '6.6', '6.7', '6.8'])
+kibana7_versions = frozenset(['7.0', '7.1', '7.2', '7.3'])
+
+
+def generate_kibana_discover_url(rule, alert: dict) -> Optional[str]:
+    """ Creates a link for a kibana discover app. """
+    match = alert['match_body']
+
+    discover_app_url = rule.conf('kibana_discover_app_url')
+    if not discover_app_url:
+        reactor_logger.warning(
+            'Missing kibana_discover_app_url for rule %s' % (
+                rule.conf('name', '<MISSING NAME>')
+            )
+        )
+        return None
+
+    kibana_version = rule.conf('kibana_discover_version')
+    if not kibana_version:
+        reactor_logger.warning(
+            'Missing kibana_discover_version for rule %s' % (
+                rule.conf('name', '<MISSING NAME>')
+            )
+        )
+        return None
+
+    index = rule.conf('kibana_discover_index_pattern_id')
+    if not index:
+        reactor_logger.warning(
+            'Missing kibana_discover_index_pattern_id for rule %s' % (
+                rule.conf('name', '<MISSING NAME>')
+            )
+        )
+        return None
+
+    columns = rule.conf('kibana_discover_columns', ['_source'])
+    filters = rule.conf('filter', [])
+
+    if 'query_key' in rule:
+        query_keys = rule.conf('compound_query_key', [rule['query_key']])
+    else:
+        query_keys = []
+
+    timestamp = dots_get(match, rule['timestamp_field'])
+    timeframe = rule.conf('timeframe', kibana_default_timedelta)
+    from_timedelta = rule.conf('kibana_discover_from_timedelta', timeframe)
+    from_time = ts_add(timestamp, -from_timedelta)
+    to_timedelta = rule.conf('kibana_discover_to_timedelta', timeframe)
+    to_time = ts_add(timestamp, to_timedelta)
+
+    if kibana_version in kibana5_kibana6_versions:
+        global_state = kibana6_disover_global_state(from_time, to_time)
+        app_state = kibana_discover_app_state(index, columns, filters, query_keys, match)
+
+    elif kibana_version in kibana7_versions:
+        global_state = kibana7_disover_global_state(from_time, to_time)
+        app_state = kibana_discover_app_state(index, columns, filters, query_keys, match)
+
+    else:
+        reactor_logger.warning(
+            'Unknown kibana discover application version %s for rule %s' % (
+                kibana_version,
+                rule.conf('name', '<MISSING NAME>')
+            )
+        )
+        return None
+
+    return "%s?_g=%s&_a=%s" % (
+        os.path.expandvars(discover_app_url),
+        urllib.parse.quote(global_state),
+        urllib.parse.quote(app_state)
+    )
+
+
+def kibana6_disover_global_state(from_time, to_time):
+    return prison.dumps({
+        'refreshInterval': {
+            'pause': True,
+            'value': 0
+        },
+        'time': {
+            'from': from_time,
+            'mode': 'absolute',
+            'to': to_time
+        }
+    })
+
+
+def kibana7_disover_global_state(from_time, to_time):
+    return prison.dumps({
+        'filters': [],
+        'refreshInterval': {
+            'pause': True,
+            'value': 0
+        },
+        'time': {
+            'from': from_time,
+            'to': to_time
+        }
+    })
+
+
+def kibana_discover_app_state(index, columns, filters, query_keys, match):
+    app_filters = []
+
+    if filters:
+        bool_filter = {'must': filters}
+        app_filters.append({
+            '$state': {
+                'store': 'appState'
+            },
+            'bool': bool_filter,
+            'meta': {
+                'alias': 'filter',
+                'disabled': False,
+                'index': index,
+                'key': 'bool',
+                'negate': False,
+                'type': 'custom',
+                'value': json.dumps(bool_filter, separators=(',', ':'))
+            },
+        })
+
+    for query_key in query_keys:
+        query_value = dots_get(match, query_key)
+
+        if query_value is None:
+            app_filters.append({
+                '$state': {
+                    'store': 'appState'
+                },
+                'exists': {
+                    'field': query_key
+                },
+                'meta': {
+                    'alias': None,
+                    'disabled': False,
+                    'index': index,
+                    'key': query_key,
+                    'negate': True,
+                    'type': 'exists',
+                    'value': 'exists'
+                }
+            })
+
+        else:
+            app_filters.append({
+                '$state': {
+                    'store': 'appState'
+                },
+                'meta': {
+                    'alias': None,
+                    'disabled': False,
+                    'index': index,
+                    'key': query_key,
+                    'negate': False,
+                    'params': {
+                        'query': query_value,
+                        'type': 'phrase'
+                    },
+                    'type': 'phrase',
+                    'value': str(query_value)
+                },
+                'query': {
+                    'match': {
+                        query_key: {
+                            'query': query_value,
+                            'type': 'phrase'
+                        }
+                    }
+                }
+            })
+
+    return prison.dumps({
+        'columns': columns,
+        'filters': app_filters,
+        'index': index,
+        'interval': 'auto'
+    })
