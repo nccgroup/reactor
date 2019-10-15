@@ -512,10 +512,10 @@ class CommandAlerter(Alerter):
 
             if self.conf.get('pipe_format') == 'json':
                 match_json = json.dumps(alerts, cls=DateTimeEncoder) + '\n'
-                _, _ = sub_proc.communicate(input=match_json)
+                _, _ = sub_proc.communicate(input=match_json.encode())
             elif self.conf.get('pipe_format') == 'plain':
                 alert_text = self.create_alert_body(alerts)
-                _, _ = sub_proc.communicate(input=alert_text)
+                _, _ = sub_proc.communicate(input=alert_text.encode())
             if self.conf.get('fail_on_non_zero_exit', False) and sub_proc.wait():
                 raise ReactorException('Non-zero exit code while running command %s' % (' '.join(command)))
         except OSError as e:
