@@ -358,7 +358,7 @@ def perform_run(config: dict, args: dict) -> int:
     if not args['plugins_only']:
         exit_code = reactor.start()
     else:
-        while reactor.running:
+        while reactor.terminate_called == 0:
             time.sleep(0.5)
         exit_code = 0
 
