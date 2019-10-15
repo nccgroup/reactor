@@ -308,8 +308,12 @@ class TestAlerter(Alerter):
 
     def __init__(self, *args):
         super(TestAlerter, self).__init__(*args)
+        self.alerts = []
 
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
+        # Extend the list of lists received
+        self.alerts.extend(alerts)
+
         formatted_str = []
         for alert in alerts:
             alert['silenced'] = silenced

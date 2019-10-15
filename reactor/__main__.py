@@ -284,7 +284,7 @@ def perform_hits(config: dict, args: dict) -> int:
                                 hits[list(hits.keys())[0]])
 
         else:
-            rule.alerters = [TestAlerter(rule, {'format': args['format'], 'output': args['output']})]
+            rule.alerters = []
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
