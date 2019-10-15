@@ -1255,7 +1255,7 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
             placeholder = {self._data.ts_field: timestamp, "placeholder": True}
             # The placeholder may trigger an alert, in which case, qk will be expected
             if qk != 'all':
-                placeholder.update({self._conf['query_key']: qk})
+                dots_set(placeholder, self._conf['query_key'], qk)
             yield from self.handle_event(placeholder, 0, qk)
 
     def add_count_data(self, counts) -> Generator[dict, None, None]:
@@ -1615,7 +1615,7 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
             if 'min_cardinality' in self._conf:
                 event = {self._data.ts_field: timestamp}
                 if 'query_key' in self._conf:
-                    event.update({self._conf['query_key']: qk})
+                    dots_set(event, self._conf['query_key'], qk)
                 yield from self.check_for_match(qk, event, False)
 
 
