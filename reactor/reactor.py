@@ -1232,9 +1232,8 @@ class Core(object):
         except ReactorException as e:
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name}, rule=rule)
         else:
-            # old_start_time = pretty_ts(rule.data.original_start_time, rule.conf('use_local_time'))
             old_start_time = pretty_ts(rule.data.start_time, rule.conf('use_local_time'))
-            reactor_logger.log(logging.INFO, # if rule.data.alerts_sent else logging.DEBUG,
+            reactor_logger.log(logging.INFO if rule.data.alerts_sent else logging.DEBUG,
                                'Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                '%s alerts sent (%s silenced)',
                                old_start_time, pretty_ts(end_time, rule.conf('use_local_time')), rule.name,
