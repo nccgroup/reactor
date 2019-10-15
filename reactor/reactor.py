@@ -709,9 +709,8 @@ class Core(object):
                                      'must_not': [{'exists': {'field': 'aggregate_id'}}]}}}
         if aggregation_key_value:
             query['filter']['bool']['must'].append({'term': {'aggregation_key': aggregation_key_value}})
-        if self.es_client.es_version_at_least(5):
-            query = {'query': {'bool': query}}
-        query['sort'] = {'alert_time': {'order': 'desc'}}
+        query = {'query': {'bool': query},
+                 'sort': {'alert_time': {'order': 'desc'}}}
         try:
             if self.es_client.es_version_at_least(6):
                 res = self.es_client.search(index=self.alert_alias, body=query, size=1)
@@ -791,11 +790,8 @@ class Core(object):
 
     def get_start_time(self, rule) -> Optional[datetime.datetime]:
         """ Query ElasticSearch for the last time we ran this rule. """
-        sort = {'sort': {'@timestamp': {'order': 'desc'}}}
-        query = {'filter': {'term': {'rule_uuid': rule.locator}}}
-        if self.es_client.es_version_at_least(5):
-            query = {'query': {'bool': query}}
-        query.update(sort)
+        query = {'query': {'bool': {'filter': {'term': {'rule_uuid': rule.locator}}}},
+                 'sort': {'@timestamp': {'order': 'desc'}}}
 
         try:
             doc_type = 'status'
@@ -927,13 +923,8 @@ class Core(object):
         if self.mode in ['debug', 'test']:
             return None
 
-        query = {'term': {'silence_key': rule.locator + '.' + cache_key}}
-        sort = {'sort': {'until': {'order': 'desc'}}}
-        if self.es_client.es_version_at_least(5):
-            query = {'query': query}
-        else:
-            query = {'filter': query}
-        query.update(sort)
+        query = {'query': {'term': {'silence_key': rule.locator + '.' + cache_key}},
+                 'sort': {'until': {'order': 'desc'}}}
 
         try:
             index = self.get_writeback_index('silence')
@@ -1278,12 +1269,8 @@ class Core(object):
         inner_query = {'query_string': {'query': '!_exists_:aggregate_id AND alert_sent:false'}}
         time_filter = {'range': {'alert_time': {'from': dt_to_ts(dt_now() - time_limit),
                                                 'to': dt_to_ts(dt_now())}}}
-        sort = {'sort': {'alert_time': {'order': 'asc'}}}
-        if self.es_client.es_version_at_least(5):
-            query = {'query': {'bool': {'must': inner_query, 'filter': time_filter}}}
-        else:
-            query = {'query': inner_query, 'filter': time_filter}
-        query.update(sort)
+        query = {'query': {'bool': {'must': inner_query, 'filter': time_filter}},
+                 'sort': {'alert_time': {'order': 'asc'}}}
 
         try:
             if self.es_client.es_version_at_least(6):

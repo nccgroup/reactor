@@ -591,10 +591,7 @@ def format_index(index, start, end, add_extra=False):
 
 
 def add_raw_postfix(field, es_version):
-    if semantic_at_least(es_version, 5):
-        end = '.keyword'
-    else:
-        end = '.raw'
+    end = '.keyword'
     if not field.endswith(end):
         field += end
     return field
