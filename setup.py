@@ -1,5 +1,5 @@
 import setuptools
-import reactor
+from reactor import __version__, __author__
 
 with open('README.md', 'r') as fh:
     long_description = fh.read()
@@ -8,10 +8,10 @@ with open('requirements.txt', 'r') as fh:
     install_requirements = fh.read().split()
 setuptools.setup(
     name='reactor',
-    version=reactor.__version__,
-    author=reactor.__author__,
+    version=__version__,
+    author=__author__,
     author_email='peter.scopes@nccgroup.com',
-    maintainer=reactor.__author__,
+    maintainer=__author__,
     maintainer_email='peter.scopes@nccgroup.com',
     description='Runs custom filters on Elasticsearch and alerts on matches',
     long_description=long_description,
