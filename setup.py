@@ -19,7 +19,7 @@ setuptools.setup(
     keywords=['alerting', 'alerts', 'elasticsearch', 'SIEM', 'scalable', 'reliable', 'modular'],
     url='https://nccgroup.com/',
     setup_requires='setuptools',
-    packages=setuptools.find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
+    packages=['reactor'],
     exclude_package_data={},
     license='Copyright 2019 NCC Group',
     platforms=['OS Independent'],

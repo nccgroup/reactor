@@ -1,5 +1,6 @@
 import collections
 import datetime
+import importlib
 import logging
 import os
 import re
@@ -11,9 +12,9 @@ import dateutil
 import dateutil.parser
 import elasticsearch
 import pytz
+import reactor.auth
 import yaml
 
-import reactor.auth
 from .exceptions import ReactorException
 
 reactor_logger = logging.getLogger('reactor')
@@ -122,9 +123,13 @@ def import_class(class_str: str, mappings: dict = None, module=None) -> type:
     if mappings and class_str in mappings:
         return import_class(mappings[class_str])
 
+    # If the working directory is not in the path
+    if os.path.abspath(os.curdir) not in sys.path:
+        sys.path.append(os.path.abspath(os.curdir))
+
     try:
         module_path, module_class = class_str.rsplit('.', 1)
-        base_module = __import__(module_path, globals(), locals(), [module_class])
+        base_module = importlib.import_module(module_path)
         return getattr(base_module, module_class)
     except (ImportError, AttributeError, ValueError) as e:
         raise ReactorException('Could not import module %s: %s' % (class_str, e))
