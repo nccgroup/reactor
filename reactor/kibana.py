@@ -315,7 +315,7 @@ dashboard_temp = {'editable': True,
                                                             u'query': u'',
                                                             u'type': u'lucene'}}}},
                   u'style': u'dark',
-                  u'title': u'ElastAlert Alert Dashboard'}
+                  u'title': u'Reactor Alert Dashboard'}
 
 kibana4_time_temp = "(refreshInterval:(display:Off,section:0,value:0),time:(from:'%s',mode:absolute,to:'%s'))"
 
