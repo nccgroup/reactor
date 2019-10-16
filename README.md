@@ -6,6 +6,13 @@ any relevant bugs fixes be patched in and any useful feature ported in.
 Reactor is an alerting engine which takes in a set of rules with custom filters and alerts on matches.
 Reactor automatically updates silenced alerts with repeat alert information.
 
+#### Patch history from ElastAlert
+| Date       | Commit                                   | Notes                                             |
+|------------|------------------------------------------|---------------------------------------------------|
+| 2019-10-16 | 325f1dfe7a45f3ca2a2cc00127ab71fcd4f9cead | Went back until before Reactor was first created. |
+|            |                                          |                                                   |
+
+
 ## Supported Versions
 Currently Reactor supports ElasticSearch 5.x.x, 6.x.x, and 7.x.x
 As new versions of elasticsearch become available Reactor will be updated to support.
@@ -71,6 +78,7 @@ To execute the integration tests run the following command:
 docker-compose -f docker-compose-test.yml up --abort-on-container-exit --build  reactor elasticsearch
 ```
 
+
 ## Create SSL certs for RAFT leadership
 The following set of commands (performed in ``./certs/``) will create a set a CA and device certificate for running the mock cluster on localhost:
 ```shell script
@@ -104,6 +112,7 @@ The following set of commands (performed in ``./certs/``) will create a set a CA
 # Generate a signed device certificate:
 > openssl x509 -req -in transport-consensus.csr -CA transport-ca.pem -CAkey transport-ca.key -CAcreateserial -out transport-consensus.crt -days 500 -sha256
 ```
+
 
 ## Build documentation
 To build the documentation:
