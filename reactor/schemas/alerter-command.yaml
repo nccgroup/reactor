@@ -10,7 +10,6 @@ properties:
   pipe_format:
     type: string
     enum: [json, plain]
-    default: json
   fail_on_non_zero_exit:
     type: boolean
       default: false

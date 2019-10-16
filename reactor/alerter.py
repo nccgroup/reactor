@@ -511,8 +511,8 @@ class CommandAlerter(Alerter):
             sub_proc = subprocess.Popen(command, stdin=subprocess.PIPE, shell=self.shell)
 
             if self.conf.get('pipe_format') == 'json':
-                match_json = json.dumps(alerts, cls=DateTimeEncoder) + '\n'
-                _, _ = sub_proc.communicate(input=match_json.encode())
+                alert_json = json.dumps(alerts, cls=DateTimeEncoder) + '\n'
+                _, _ = sub_proc.communicate(input=alert_json.encode())
             elif self.conf.get('pipe_format') == 'plain':
                 alert_text = self.create_alert_body(alerts)
                 _, _ = sub_proc.communicate(input=alert_text.encode())

@@ -352,7 +352,7 @@ Then, assuming an aggregation window of 10 minutes, if you receive the following
 
 This should result in 2 alerts: One containing alice's two events, sent at ``2016-09-20T00:10:00`` and one containing bob's one event sent at ``2016-09-20T00:16:00``
 
-For aggregations, there can sometimes be a large number of documents present in the viewing medium (email, jira ticket, etc..). If you set the ``summary_table_fields`` field, Elastalert will provide a summary of the specified fields from all the results.
+For aggregations, there can sometimes be a large number of documents present in the viewing medium (email, jira ticket, etc..). If you set the ``summary_table_fields`` field, Reactor will provide a summary of the specified fields from all the results.
 
 For example, if you wish to summarize the usernames and event_types that appear in the documents so that you can see the most relevant fields at a quick glance, you can set::
 
@@ -360,7 +360,7 @@ For example, if you wish to summarize the usernames and event_types that appear 
         - my_data.username
         - my_data.event_type
 
-Then, for the same sample data shown above listing alice and bob's events, Elastalert will provide the following summary table in the alert medium::
+Then, for the same sample data shown above listing alice and bob's events, Reactor will provide the following summary table in the alert medium::
 
     +------------------+--------------------+
     | my_data.username | my_data.event_type |
@@ -1443,14 +1443,9 @@ In an aggregated alert, these fields come from the first match.
 
 Optional:
 
-.. TODO these are out of date! Check with latest ElastAlert
-
-``pipe_match_json``: If true, the match will be converted to JSON and passed to stdin of the command. Note that this
-will cause Reactor to block until the command exits or sends an EOF to stdout.
-
-``pipe_alert_text``: If true, the standard alert body text will be passed to stdin of the command. Note that this will
-cause Reactor to block until the command exits or sends an EOF to stdout. It cannot be used at the same time as
-``pipe_match_json``.
+``pipe_format``: This must be either ``json`` or ``plain``. If ``json``, the alert will be converted to JSON and passed
+to stdin of the command. If ``plain``, the standard alert body text  will be passed to stdin of the command. Note that
+this will cause Reactor to block until the command exists or sends an EOF to stdout.
 
 Example usage using old-style format::
 
@@ -1468,6 +1463,8 @@ Example usage using new-style format::
     alerters:
       command:
         command: ["/bin/send_alert", "--username", "{match[username]}"]
+
+``fail_on_non_zero_exit``: This will cause Reactor to raise an exception if the command exits with a non-zero code.
 
 
 .. _configure_alerters_email:
