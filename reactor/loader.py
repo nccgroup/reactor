@@ -1,14 +1,15 @@
 import copy
 import datetime
 import hashlib
+import logging
 import os
 import typing
 from typing import List, Optional, Iterator
 
 import jsonschema
+import reactor.enhancement
 import yaml
 
-import reactor.enhancement
 from .exceptions import ReactorException, ConfigException
 from .rule import Rule
 from .util import (
@@ -17,7 +18,6 @@ from .util import (
     import_class
 )
 from .validator import yaml_schema, SetDefaultsDraft7Validator
-
 
 _schemas = {}
 """ Store """
@@ -98,6 +98,10 @@ class RuleLoader(object):
             if self.rules.get(locator) and self.rules[locator].hash == self.get_hash(locator):
                 rules[locator] = self.rules[locator]
                 continue
+            elif self.rules.get(locator):
+                reactor_logger.info('Updating rule "%s"', locator)
+            else:
+                reactor_logger.log(logging.INFO if self.loaded else logging.DEBUG, 'Loaded rule "%s"', locator)
 
             # Load the rule
             try:
