@@ -292,6 +292,7 @@ def perform_hits(config: dict, args: dict) -> int:
             rule.max_hits = args['max_hits']
 
             hits = rule.get_hits(start_time, end_time, rule.get_index(start_time, end_time))
+            rule.clear_scroll()
 
             # Format the hits
             formatted_str = []

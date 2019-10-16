@@ -1019,7 +1019,7 @@ class Core(object):
             complete = not (rule.data.scroll_id and rule.data.num_hits < rule.data.total_hits)
 
         # Tidy up scroll_id (after scrolling is finished)
-        rule.data.scroll_id = None
+        rule.clear_scroll()
         rule.data.hits.extend(data)
 
     def garbage_collect(self, rule: Rule):

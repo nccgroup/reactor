@@ -484,10 +484,28 @@ class Rule(object):
         else:
             return None
 
+    def clear_scroll(self):
+        """
+        Clears the scroll from elasticsearch to save resources.
+
+        Should be called after :py:meth:`Rule.get_hits` and no longer want to scroll.
+        """
+        if not self._data.scroll_id:
+            return
+        try:
+            self.es_client.clear_scroll(scroll_id=self._data.scroll_id)
+        except elasticsearch.NotFoundError:
+            pass
+        finally:
+            self._data.scroll_id = None
+
     def get_hits(self, start_time, end_time, index: str) -> Optional[list]:
         """
         Query ElasticSearch for the given rule and return the processed results.
-        :raises: reactor.exceptions.QueryException
+
+        Should call :py:meth:`Rule.clear_scroll` once all hits are retrieved.
+
+        :raises reactor.exceptions.QueryException
         """
         query = self.get_query(self.conf('filter'), start_time, end_time,
                                timestamp_field=self.conf('timestamp_field'))
@@ -545,7 +563,6 @@ class Rule(object):
             if self._data.num_hits > self.max_hits:
                 hits = hits[:(self.max_hits % self.conf('max_query_size'))]
             self._data.num_hits = self.max_hits
-            self._data.scroll_id = None
             reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
                                  self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
                                  self._data.num_hits, len(hits), self._data.total_hits)
