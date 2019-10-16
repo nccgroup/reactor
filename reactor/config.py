@@ -1,7 +1,9 @@
 import jsonschema
+import logging
+import logging.config
 
 import reactor
-from .util import dots_set_default, dots_set, dots_get, import_class, load_yaml
+from .util import dots_set_default, dots_set, dots_get, import_class, load_yaml, reactor_logger
 from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 required_config = frozenset(['elasticsearch.host', 'elasticsearch.port'])
@@ -56,8 +58,11 @@ default_mappings = {
 config_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/config.yaml', __file__)
 
 
-def parse_config(filename: str, defaults: dict = None, overwrites: dict = None) -> dict:
+def parse_config(filename: str, args: dict, defaults: dict = None, overwrites: dict = None) -> dict:
     conf = load_yaml(filename)
+
+    # Configure logging
+    configure_logging(conf, args)
 
     # Set user defaults
     for key, value in (defaults or {}).items():
@@ -95,3 +100,24 @@ def parse_config(filename: str, defaults: dict = None, overwrites: dict = None) 
     conf['loader'] = rule_loader_class(loader_config, rule_defaults, conf['mappings'])
 
     return conf
+
+
+def configure_logging(conf: dict, args: dict):
+    """ Configure logging from the global config file if provided. """
+    if 'logging' in conf:
+        # load new logging configuration
+        logging.config.dictConfig(conf['logging'])
+
+    # re-enable INFO log level on reactor_logger in verbose/debug mode
+    # (but don't touch it if it is already set to INFO or below by config)
+    if args.get('verbose') or args.get('debug'):
+        if reactor_logger.level > logging.INFO or reactor_logger.level == logging.NOTSET:
+            reactor_logger.setLevel(logging.INFO)
+
+    if args.get('es_debug', False):
+        logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+
+    if args.get('es_debug_trace', False):
+        tracer = logging.getLogger('elasticsearch.trace')
+        tracer.setLevel(logging.INFO)
+        tracer.addHandler(logging.FileHandler(args['es_debug_trace']))

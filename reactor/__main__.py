@@ -384,7 +384,7 @@ def main(args: list = None):
         urllib3.disable_warnings()
 
     try:
-        config = parse_config(args['config'])
+        config = parse_config(args['config'], args)
 
         # Initial Reactor writeback database
         if args['action'] == 'init':

@@ -278,11 +278,6 @@ mindful to allow sufficient time to finish processing all the results.
 will upload a traceback message to ``reactor_metadata`` and if ``notify_email`` is set, send an email notification. The
 rule will no longer be run until either Reactor restarts or the rule file has been modified. This defaults to True.
 
-.. TODO these are out of date! Check with latest ElastAlert
-
-``show_disabled_rules``: If true, Reactor show the disable rules' list when finishes the execution. This defaults to True.
-
-
 ``notifiers``: Optional; A dictionary of notifier names to configuration.
 For more information see :ref:`Notifiers <configure_notifiers>`
 
@@ -369,8 +364,6 @@ where:
 
 Logging
 -------
-
-.. TODO this is out of date. Check with ElastAlert!
 
 By default, Reactor uses a simple basic logging configuration to print log messages to standard error.
 You can change the log level to ``INFO`` messages by using the ``--verbose`` or ``--debug`` command line options.

@@ -40,15 +40,7 @@ class Reactor(object):
         self.mode = args.get('mode', 'default')
 
         if self.mode == 'debug':
-            reactor_logger.setLevel(min(reactor_logger.level, logging.INFO))
             reactor_logger.info('Note: In debug mode, alerts will be logged to console but NOT actually sent.')
-
-        if args.get('es_debug', False):
-            logging.getLogger('elasticsearch').setLevel(logging.WARNING)
-        if args.get('es_debug_trace', False):
-            tracer = logging.getLogger('elasticsearch.trace')
-            tracer.setLevel(logging.WARNING)
-            tracer.addHandler(logging.FileHandler(args['es_debug_trace']))
 
         self.conf = conf
         self.args = args

@@ -127,3 +127,69 @@ rule:
 #    my_notifier: package.module.MyNotifier
 #  plugin:
 #    my_notifier: package.module.MyPlugin
+
+
+# Custom logging configuration
+# If you want to setup your own logging configuration to log into
+# files as well or to Logstash and/or modify log levels, use
+# the configuration below and adjust to your needs.
+# Note: if you run Reactor with --verbose/--debug, the log level of
+# the "reactor" logger is changed to INFO, if not already INFO/DEBUG.
+#logging:
+#  version: 1
+#  incremental: false
+#  disable_existing_loggers: false
+#  formatters:
+#    logline:
+#      format: '%(asctime)s [%(name)s] %(levelname)s: %(message)s'
+#
+#    handlers:
+#      console:
+#        class: logging.StreamHandler
+#        formatter: logline
+#        level: DEBUG
+#        stream: ext://sys.stderr
+#
+#      file:
+#        class : logging.FileHandler
+#        formatter: logline
+#        level: DEBUG
+#        filename: reactor.log
+#
+#    loggers:
+#      reactor:
+#        level: WARN
+#        handlers: []
+#        propagate: true
+#
+#      reactor.plugin:
+#        level: WARN
+#        handlers: []
+#        propagate: true
+#
+#      apscheduler:
+#        level: WARN
+#        handlers: []
+#        propagate: true
+#
+#      raft:
+#        level: WARN
+#        handlers: []
+#        propagate: true
+#
+#      elasticsearch:
+#        level: WARN
+#        handlers: []
+#        propagate: true
+#
+#      elasticsearch.trace:
+#        level: WARN
+#        handlers: []
+#        propagate: true
+#
+#      '':  # root logger
+#        level: WARN
+#          handlers:
+#            - console
+#            - file
+#        propagate: false
