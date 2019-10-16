@@ -272,7 +272,7 @@ def perform_hits(config: dict, args: dict) -> int:
     for rule in reactor.loader:
         if args['counts']:
             hits = rule.get_hits_count(start_time, end_time, rule.get_index(start_time, end_time))
-            reactor_logger.info('Ran from %s to %s "%s": %s query hits',
+            reactor_logger.info('Queried from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 rule.name,
@@ -305,7 +305,7 @@ def perform_hits(config: dict, args: dict) -> int:
                 with open(args['output'], 'w') as f:
                     f.writelines([line + '\n' for line in formatted_str])
 
-            reactor_logger.info('Ran from %s to %s "%s": %s query hits',
+            reactor_logger.info('Queried from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 rule.name,
