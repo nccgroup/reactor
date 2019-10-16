@@ -117,7 +117,7 @@ class Reactor(object):
             _, tb = sys.exc_info()[1:]
             self.handle_uncaught_exception(e, rule, ''.join(traceback.format_tb(tb)))
         else:
-            reactor_logger.info('Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
+            reactor_logger.info('Tested from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                 '%s alerts sent (%s silenced)',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(end_time, rule.conf('use_local_time')),
