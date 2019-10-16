@@ -6,7 +6,7 @@ type: object
 additionaProperties: false
 required: [command]
 properties:
-  command: {$ref: "common.yaml#/definitions/arrayOfStrings"}
+  command: {$ref: "file:common.yaml#/definitions/arrayOfStrings"}
   pipe_format:
     type: string
     enum: [json, plain]

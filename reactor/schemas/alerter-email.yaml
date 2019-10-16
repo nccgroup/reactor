@@ -8,15 +8,15 @@ required: [to]
 
 properties:
   # Email to settings
-  to: {$ref: "common.yaml#/definitions/emails"}
-  cc: {$ref: "common.yaml#/definitions/emails"}
-  bcc: {$ref: "common.yaml#/definitions/emails"}
+  to: {$ref: "file:common.yaml#/definitions/emails"}
+  cc: {$ref: "file:common.yaml#/definitions/emails"}
+  bcc: {$ref: "file:common.yaml#/definitions/emails"}
   from_field: {type: string}
   # Email from settings
   reply_to:
     type: string
     format: email
-  notify: {$ref: "common.yaml#/definitions/emails"}
+  notify: {$ref: "file:common.yaml#/definitions/emails"}
   from_addr: {type: string}
   add_domain:
     type: string

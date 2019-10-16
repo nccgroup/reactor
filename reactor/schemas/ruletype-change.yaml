@@ -10,5 +10,5 @@ properties:
   type: {enum: [change, ChangeRule]}
   compare_key: {'items': {'type': 'string'},'type': ['string', 'array']}
   ignore_null: {type: boolean}
-  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
 ...

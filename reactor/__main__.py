@@ -15,7 +15,7 @@ from reactor.reactor import Reactor
 from reactor.util import (
     parse_duration,
     parse_timestamp,
-    RangeChoice,
+    parse_positive_int,
     elasticsearch_client,
     dt_now,
     reactor_logger,
@@ -70,11 +70,10 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     run_rule = argparse.ArgumentParser(add_help=False)
     run_rule.add_argument('--max-hits',
-                          type=int,
-                          metavar='[1..10000]',
-                          choices=RangeChoice(1, 10000),
+                          type=parse_positive_int,
+                          metavar='[1..]',
                           default=None,
-                          help='Maximum number of hits to retrieve')
+                          help='Maximum number of hits to retrieve (overrides max_scrolling_count)')
     run_rule.add_argument('--timeframe',
                           type=parse_duration,
                           metavar='units=val',
@@ -191,17 +190,10 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     console_sp = sub_parser.add_parser('console', parents=[config, patience, disable_warnings],
                                        help='Start the reactor console')
     console_sp.set_defaults(action='console')
-    console_sp.add_argument('--index',
+    console_sp.add_argument('-i', '--index',
                             default=None,
                             choices=['alert', 'error', 'silence', 'status'],
                             help='Index to retrieve hits from')
-    console_sp.add_argument('--max-hits',
-                            type=int,
-                            metavar='[0..100]',
-                            choices=RangeChoice(0, 100),
-                            default=10,
-                            help='Maximum number of hits to retrieve (default: %(default)s)')
-
     # Silence command
     silence_sp = sub_parser.add_parser('silence', parents=[config, patience, disable_warnings],
                                        help='Silence a set of rules')
@@ -291,7 +283,9 @@ def perform_hits(config: dict, args: dict) -> int:
             rule.set_conf('segment_size', args['timeframe'])
             rule.max_hits = args['max_hits']
 
-            hits = rule.get_hits(start_time, end_time, rule.get_index(start_time, end_time))
+            hits = []
+            while rule.data.num_hits < min(rule.data.total_hits or float('inf'), rule.max_hits):
+                hits.extend(rule.get_hits(start_time, end_time, rule.get_index(start_time, end_time)))
             rule.clear_scroll()
 
             # Format the hits

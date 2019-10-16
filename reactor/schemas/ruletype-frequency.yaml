@@ -9,7 +9,7 @@ required: [num_events, timeframe]
 properties:
   type: {enum: [frequency, FrequencyRule]}
   num_events: {type: integer}
-  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
   use_count_query: {type: boolean}
   doc_type: {type: string}
   use_terms_query: {type: boolean}

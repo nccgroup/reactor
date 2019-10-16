@@ -181,7 +181,7 @@ class Rule(object):
         self._conf = conf
         self._hash = hash
         self._data = self._working_data()
-        self._max_hits = float('inf')
+        self._max_hits = self._conf.get('max_scrolling_count', float('inf'))
 
         self._es_client = None
         self.alerters = []  # type: List[reactor.alerter.Alerter]
@@ -223,7 +223,7 @@ class Rule(object):
     @max_hits.setter
     def max_hits(self, value: int):
         if value is None or 1 <= value <= 10000:
-            self._max_hits = value or float('inf')
+            self._max_hits = value or self._conf.get('max_scrolling_count', float('inf'))
         else:
             raise ValueError('max_hits must either be None or between 1 and 10000 inclusive')
 
@@ -526,7 +526,7 @@ class Rule(object):
                 res = self.es_client.scroll(scroll_id=self._data.scroll_id, scroll=scroll_keepalive)
             else:
                 res = self.es_client.search(scroll=scroll_keepalive, index=index,
-                                            size=int(min(self.max_hits-self._data.num_hits, self.conf('max_query_size'))),
+                                            size=min(self.max_hits-self._data.num_hits, self.conf('max_query_size')),
                                             body=query, ignore_unavailable=True, **extra_args)
                 if self.es_client.es_version_at_least(7):
                     self._data.total_hits = int(res['hits']['total']['value'])

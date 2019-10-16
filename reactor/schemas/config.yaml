@@ -8,7 +8,7 @@ type: object
 required: [elasticsearch]
 
 properties:
-  elasticsearch: {$ref: 'file:common.yaml#/definitions/elasticsearch'}
+  elasticsearch: {$ref: "file:common.yaml#/definitions/elasticsearch"}
 
 
   writeback_index:
@@ -72,12 +72,12 @@ properties:
     default: {seconds: 3}
     title: "Duration to wait between checking for rule configuration changes"
     allOf:
-      - {$ref: "common.yaml#/definitions/timeframe"}
+      - {$ref: "file:common.yaml#/definitions/timeframe"}
   resend:
     default: {seconds: 30}
     title: "Duration to wait between trying to send pending alerts"
     allOf:
-      - {$ref: "common.yaml#/definitions/timeframe"}
+      - {$ref: "file:common.yaml#/definitions/timeframe"}
 
 
   loader:
@@ -98,31 +98,13 @@ properties:
         title: "Configuration for the loader"
         default: {}
 
+
   rule:
     type: object
     title: "Default rule configurations (applied to all rules)"
+    description: |
+      See {$ref: "file:ruletype.yaml#"} for possible properties.
     default: {}
-
-    properties:
-      max_query_size:
-        type: integer
-        title: "Maximum size of results returned by a single query"
-        default: 10000
-        maximum: 10000
-        minimum: 1
-      scroll_keepalive:
-        type: string
-        title: ""
-        default: "30s"
-      disable_rule_on_error:
-        type: boolean
-        title: "Whether to disable a rule if it raises an exception"
-        default: true
-      buffer_time: {$ref: "common.yaml#/definitions/timeframe"}
-      run_every: {$ref: "common.yaml#/definitions/timeframe"}
-      _source_enabled:
-        default: True
-        type: boolean
 
 
   notifiers:

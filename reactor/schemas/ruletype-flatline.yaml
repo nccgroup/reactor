@@ -10,7 +10,7 @@ properties:
   type:
     type: string
     enum: [flatline, FlatlineRule]
-  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
   threshold: {type: integer}
   use_count_query: {type: boolean}
   doc_type: {type: string}

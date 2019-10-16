@@ -14,5 +14,5 @@ properties:
   max_cardinality: {type: integer}
   min_cardinality: {type: integer}
   cardinality_field: {type: string}
-  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
 ...

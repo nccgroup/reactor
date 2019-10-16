@@ -6,7 +6,7 @@ type: object
 additionalProperties: false
 required: [verb, url]
 properties:
-  url: {$ref: "common.yaml#/definitions/urls"}
+  url: {$ref: "file:common.yaml#/definitions/urls"}
   verb:
     type: string
     enum: [GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH]

@@ -1,3 +1,4 @@
+import argparse
 import collections
 import datetime
 import importlib
@@ -81,35 +82,34 @@ def semantic_at_least(version: tuple, major: int, minor: int = 0, patch: int = 0
 
 def parse_duration(value: str) -> datetime.timedelta:
     """ Convert ``units=val`` spec into a ``timedelta`` object. """
-    units, val = value.split('=')
-    return datetime.timedelta(**{units: int(val)})
+    try:
+        units, val = value.split('=')
+        return datetime.timedelta(**{units: int(val)})
+    except ValueError:
+        raise argparse.ArgumentTypeError('%r is not a duration (units=val)' % value)
 
 
 def parse_timestamp(value: str, ts_format: str = '%Y-%m-%dT%H:%M:%S') -> datetime.datetime:
     """ Convert ``YYYY-MM-DDTHH:MM:SS`` str into a ``datetime`` object. """
-    timestamp = datetime.datetime.strptime(value, ts_format)
-    # If no timezone information provided, assume local timezone
-    if not timestamp.tzinfo:
-        timestamp = timestamp.astimezone()
-    return timestamp
+    try:
+        timestamp = datetime.datetime.strptime(value, ts_format)
+        # If no timezone information provided, assume local timezone
+        if not timestamp.tzinfo:
+            timestamp = timestamp.astimezone()
+        return timestamp
+    except ValueError:
+        raise argparse.ArgumentTypeError('%r does not match %r' % (value, ts_format))
 
 
-class RangeChoice(object):
-    def __init__(self, min_val, max_val):
-        self.min = min_val
-        self.max = max_val
-
-    def __contains__(self, item):
-        return self.min <= item <= self.max
-
-    def __iter__(self):
-        yield str(self)
-
-    def __str__(self):
-        return '%s..%s' % (self.min, self.max)
-
-    def __repr__(self):
-        return '%s..%s' % (self.min, self.max)
+def parse_positive_int(value: str) -> int:
+    """ Ensures ``value`` is a positive integer. """
+    try:
+        pos_int = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError('%r is not a positive integer' % value)
+    if pos_int <= 0:
+        raise argparse.ArgumentTypeError('%r is not a positive integer' % value)
+    return pos_int
 
 
 def import_class(class_str: str, mappings: dict = None, module=None) -> type:

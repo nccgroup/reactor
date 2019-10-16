@@ -12,12 +12,12 @@ properties:
 
   # From MetricAggregationRule
   metric_agg_type: {enum: ["min", "max", "avg", "sum", "cardinality", "value_count"]}
-  #timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  #timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
 
   # From SpikeRule
   spike_height: {type: number}
   spike_type: {enum: ["up", "down", "both"]}
-  timeframe: {$ref: "common.yaml#/definitions/timeframe"}
+  timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
   use_count_query: {type: boolean}
   doc_type: {type: string}
   use_terms_query: {type: boolean}

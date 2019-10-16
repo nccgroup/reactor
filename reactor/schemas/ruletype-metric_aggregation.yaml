@@ -14,6 +14,6 @@ properties:
   metric_agg_type: {enum: ["min", "max", "avg", "sum", "cardinality", "value_count"]}
   max_cardinality: {type: float}
   min_cardinality: {type: float}
-  #timeframe: {$ref: "common.yaml#/definitions/timeframe"}
-  bucket_interval: {$ref: "common.yaml#/definitions/timeframe"}
+  #timeframe: {$ref: "file:common.yaml#/definitions/timeframe"}
+  bucket_interval: {$ref: "file:common.yaml#/definitions/timeframe"}
 ...
