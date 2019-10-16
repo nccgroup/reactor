@@ -446,29 +446,17 @@ def generate_kibana_discover_url(rule, alert: dict) -> Optional[str]:
 
     discover_app_url = rule.conf('kibana_discover_app_url')
     if not discover_app_url:
-        reactor_logger.warning(
-            'Missing kibana_discover_app_url for rule %s' % (
-                rule.conf('name', '<MISSING NAME>')
-            )
-        )
+        reactor_logger.warning('Missing kibana_discover_app_url for rule %s', rule.name)
         return None
 
     kibana_version = rule.conf('kibana_discover_version')
     if not kibana_version:
-        reactor_logger.warning(
-            'Missing kibana_discover_version for rule %s' % (
-                rule.conf('name', '<MISSING NAME>')
-            )
-        )
+        reactor_logger.warning('Missing kibana_discover_version for rule %s', rule.name)
         return None
 
     index = rule.conf('kibana_discover_index_pattern_id')
     if not index:
-        reactor_logger.warning(
-            'Missing kibana_discover_index_pattern_id for rule %s' % (
-                rule.conf('name', '<MISSING NAME>')
-            )
-        )
+        reactor_logger.warning('Missing kibana_discover_index_pattern_id for rule %s', rule.name)
         return None
 
     columns = rule.conf('kibana_discover_columns', ['_source'])
@@ -495,12 +483,7 @@ def generate_kibana_discover_url(rule, alert: dict) -> Optional[str]:
         app_state = kibana_discover_app_state(index, columns, filters, query_keys, match)
 
     else:
-        reactor_logger.warning(
-            'Unknown kibana discover application version %s for rule %s' % (
-                kibana_version,
-                rule.conf('name', '<MISSING NAME>')
-            )
-        )
+        reactor_logger.warning('Unknown kibana discover application version %s for rule %s', kibana_version, rule.name)
         return None
 
     return "%s?_g=%s&_a=%s" % (
