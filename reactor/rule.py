@@ -5,9 +5,9 @@ import time
 from typing import Generator, List, Optional
 
 import elasticsearch
+import reactor.enhancement
 from sortedcontainers import SortedKeyList
 
-import reactor.enhancement
 from .exceptions import ConfigException, ReactorException, QueryException
 from .kibana import filters_from_kibana
 from .util import (
@@ -22,6 +22,11 @@ from .util import (
     ElasticSearchClient, elasticsearch_client,
     add_raw_postfix, format_index,
 )
+
+
+def get_ts(pair: tuple, ts_field='@timestamp'):
+    """ Extract the ``ts_field`` from ``pair`` ``(event, count)``. """
+    return dots_get(pair[0], ts_field)
 
 
 class WorkingData(object):
@@ -88,15 +93,18 @@ class WorkingData(object):
 class EventWindow(object):
     """ A container to hold event counts for rules which need a chronological ordered event window. """
 
-    def __init__(self, timeframe, get_timestamp=None, on_remove=None):
+    def __init__(self, timeframe, ts_field='@timestamp', on_remove=None):
         self.timeframe = timeframe
         self.on_remove = on_remove
-        self.get_ts = get_timestamp or (lambda pair: dots_get(pair[0], '@timestamp'))
+        self.ts_field = ts_field
         self.data = SortedKeyList(key=self.get_ts)
         self.running_count = 0
 
     def __iter__(self):
         return iter(self.data)
+
+    def get_ts(self, pair):
+        return get_ts(pair, self.ts_field)
 
     def clear(self):
         self.data = SortedKeyList(key=self.get_ts)
@@ -121,7 +129,7 @@ class EventWindow(object):
         if not self.data:
             return dt.timedelta(0)
         else:
-            return self.get_ts(self.data[-1]) - self.get_ts(self.data[0])
+            return get_ts(self.data[-1], self.ts_field) - get_ts(self.data[0], self.ts_field)
 
     def count(self):
         """ Count the number of events in the window. """
@@ -171,15 +179,15 @@ class Rule(object):
     _schema_file = None
     _schema_relative = __file__
 
-    def __init__(self, locator: str, hash: str, conf: dict):
+    def __init__(self, locator: str, hash_str: str, conf: dict):
         """
         :param locator: Locator of the rule
-        :param hash: Uniquely identifying hash of the rule and its configuration
+        :param hash_str: Uniquely identifying hash of the rule and its configuration
         :param conf: Configuration dictionary
         """
         self.locator = locator
         self._conf = conf
-        self._hash = hash
+        self._hash = hash_str
         self._data = self._working_data()
         self._max_hits = self._conf.get('max_scrolling_count', float('inf'))
 
@@ -226,6 +234,10 @@ class Rule(object):
             self._max_hits = value or self._conf.get('max_scrolling_count', float('inf'))
         else:
             raise ValueError('max_hits must either be None or between 1 and 10000 inclusive')
+
+    @property
+    def ts_field(self):
+        return self._data.ts_field
 
     def conf(self, key: str, default: any = None) -> any:
         """
@@ -760,8 +772,8 @@ class Rule(object):
         :return: Tuple of `extra` and a deep copy of `event`
         """
         event = copy.deepcopy(event)
-        if self._data.ts_field in event:
-            event[self._data.ts_field] = dt_to_ts(event[self._data.ts_field])
+        if self.ts_field in event:
+            event[self.ts_field] = dt_to_ts(event[self.ts_field])
 
         self._data.num_matches += 1
         return extra, event
@@ -771,13 +783,6 @@ class Rule(object):
 
     def garbage_collect(self, timestamp: dt.datetime) -> Generator[dict, None, None]:
         yield from ()
-
-    #
-    # Replacement to lambda function to allow pickling
-    #
-    def get_ts(self, pair: tuple):
-        """  """
-        return dots_get(pair[0], self._data.ts_field)
 
 
 class AnyRule(AcceptsHitsDataMixin, Rule):
@@ -789,8 +794,8 @@ class AnyRule(AcceptsHitsDataMixin, Rule):
         for event in data:
             extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
                      'num_events': 1,
-                     'began_at': ts_to_dt(dots_get(event, self._data.ts_field)),
-                     'ended_at': ts_to_dt(dots_get(event, self._data.ts_field))}
+                     'began_at': ts_to_dt(dots_get(event, self.ts_field)),
+                     'ended_at': ts_to_dt(dots_get(event, self.ts_field))}
             yield self.add_match(extra, event)
 
 
@@ -831,8 +836,8 @@ class BlacklistRule(CompareRule):
 
     _schema_file = 'schemas/ruletype-blacklist.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(BlacklistRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(BlacklistRule, self).__init__(locator, hash_str, conf)
         self.expand_entries('blacklist')
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
@@ -852,8 +857,8 @@ class BlacklistRule(CompareRule):
     def generate_match(self, event: dict) -> (dict, dict):
         extra = {'compare_key': self._conf['compare_key'],
                  'num_events': 1,
-                 'began_at': dots_get(event, self._data.ts_field),
-                 'ended_at': dots_get(event, self._data.ts_field)}
+                 'began_at': dots_get(event, self.ts_field),
+                 'ended_at': dots_get(event, self.ts_field)}
         return extra, event
 
 
@@ -862,8 +867,8 @@ class WhitelistRule(CompareRule):
 
     _schema_file = 'schemas/ruletype-whitelist.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(WhitelistRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(WhitelistRule, self).__init__(locator, hash_str, conf)
         self.expand_entries('whitelist')
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
@@ -886,8 +891,8 @@ class WhitelistRule(CompareRule):
     def generate_match(self, event: dict) -> (dict, dict):
         extra = {'compare_key': self._conf['compare_key'],
                  'num_events': 1,
-                 'began_at': dots_get(event, self._data.ts_field),
-                 'ended_at': dots_get(event, self._data.ts_field)}
+                 'began_at': dots_get(event, self.ts_field),
+                 'ended_at': dots_get(event, self.ts_field)}
         return extra, event
 
 
@@ -924,13 +929,13 @@ class ChangeRule(CompareRule):
                 self.change_map[key] = (self._data.occurrences[key], values)
                 # If using timeframe, only return if the time delta is < timeframe
                 if key in self.occurrence_time:
-                    changed = event[self._data.ts_field] - self.occurrence_time[key] <= self._conf['timeframe']
+                    changed = event[self.ts_field] - self.occurrence_time[key] <= self._conf['timeframe']
 
         # Update the current value and time
         reactor_logger.debug('Setting current value of compare keys values: %s', values)
         self._data.occurrences[key] = values
         if 'timeframe' in self._conf:
-            self.occurrence_time[key] = event[self._data.ts_field]
+            self.occurrence_time[key] = event[self.ts_field]
         reactor_logger.debug('Final result of comparison between previous and current values: %r', changed)
         return changed
 
@@ -945,8 +950,8 @@ class ChangeRule(CompareRule):
                      'new_value': change[1],
                      'key': hashable(dots_get(event, self._conf['query_key'])),
                      'num_events': 1,
-                     'began_at': dots_get(event, self._data.ts_field),
-                     'ended_at': dots_get(event, self._data.ts_field)}
+                     'began_at': dots_get(event, self.ts_field),
+                     'ended_at': dots_get(event, self.ts_field)}
             reactor_logger.debug('Description of the changed records (%s): %s', extra, event)
         return extra, event
 
@@ -956,8 +961,8 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
 
     _schema_file = 'schemas/ruletype-frequency.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(FrequencyRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(FrequencyRule, self).__init__(locator, hash_str, conf)
         self.attach_related = self._conf['attach_related']
 
     def check_for_match(self, key, end=False):
@@ -967,19 +972,21 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
         if self._data.occurrences[key].count() >= self._conf['num_events']:
             # Check if the occurrences are split across a silence
             e = self._data.occurrences[key].data[0][0]
-            silence_cache_key = dots_get(e, self._conf.get('query_key'), '_missing') if self._conf.get('query_key') else '_silence'
+            silence_cache_key = '_silence'
+            if self._conf.get('query_key'):
+                silence_cache_key = dots_get(e, self._conf.get('query_key'), '_missing')
             if silence_cache_key in self._data.silence_cache:
-                oldest_ts = ts_to_dt(self.get_ts(self._data.occurrences[key].data[0]))
-                newest_ts = ts_to_dt(self.get_ts(self._data.occurrences[key].data[-1]))
+                oldest_ts = ts_to_dt(get_ts(self._data.occurrences[key].data[0], self.ts_field))
+                newest_ts = ts_to_dt(get_ts(self._data.occurrences[key].data[-1], self.ts_field))
                 until, _, _ = self._data.silence_cache[silence_cache_key]
                 if oldest_ts <= until < newest_ts:
-                    while self.get_ts(self._data.occurrences[key].data[0]) <= until:
+                    while get_ts(self._data.occurrences[key].data[0], self.ts_field) <= until:
                         self._data.occurrences[key].data.pop(0)
                     return
 
             extra = {'key': key, 'num_events': self._data.occurrences[key].count(),
-                     'began_at': self.get_ts(self._data.occurrences[key].data[0]),
-                     'ended_at': self.get_ts(self._data.occurrences[key].data[-1])}
+                     'began_at': get_ts(self._data.occurrences[key].data[0], self.ts_field),
+                     'ended_at': get_ts(self._data.occurrences[key].data[-1], self.ts_field)}
             event = self._data.occurrences[key].data[-1][0]
             if self.attach_related:
                 event['related_events'] = [data[0] for data in self._data.occurrences[key].data[:-1]]
@@ -994,7 +1001,8 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
             key = hashable(dots_get(event, qk)) if qk else 'all'
 
             # Store the timestamps of recent occurrences, per key
-            self._data.occurrences.setdefault(key, EventWindow(self._conf['timeframe'], self.get_ts)).append((event, 1))
+            event_window = EventWindow(self._conf['timeframe'], self.ts_field)
+            self._data.occurrences.setdefault(key, event_window).append((event, 1))
             yield from self.check_for_match(key, end=False)
             keys.add(key)
 
@@ -1009,7 +1017,7 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
 
     def get_match_str(self, extra: dict, match: dict) -> str:
         lt = self._conf['use_local_time']
-        match_ts = dots_get(match, self._data.ts_field)
+        match_ts = dots_get(match, self.ts_field)
         start_time = pretty_ts(ts_to_dt(match_ts) - self._conf['timeframe'], lt)
         end_time = pretty_ts(match_ts, lt)
         return 'At least %d events occurred between %s and %s\n\n' % (self._conf['num_events'], start_time, end_time)
@@ -1018,7 +1026,7 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
         """ Remove all occurrence data that is beyond the timeframe away. """
         stale_keys = []
         for key, window in self._data.occurrences.items():
-            if timestamp - dots_get(window.data[-1][0], self._data.ts_field) > self._conf['timeframe']:
+            if timestamp - dots_get(window.data[-1][0], self.ts_field) > self._conf['timeframe']:
                 stale_keys.append(key)
         list(map(self._data.occurrences.pop, stale_keys))
         yield from ()
@@ -1029,17 +1037,18 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
             raise ReactorException('add_count_data can only accept one count at a time')
         (ts, count), = list(counts.items())
 
-        event = ({self._data.ts_field: ts}, count)
-        self._data.occurrences.setdefault('all', EventWindow(self._conf['timeframe'], self.get_ts)).append(event)
+        event = ({self.ts_field: ts}, count)
+        event_window = EventWindow(self._conf['timeframe'], self.ts_field)
+        self._data.occurrences.setdefault('all', event_window).append(event)
         yield from self.check_for_match('all')
 
     def add_terms_data(self, terms) -> Generator[dict, None, None]:
         for timestamp, buckets in terms.items():
             for bucket in buckets:
-                event = ({self._data.ts_field: timestamp,
+                event = ({self.ts_field: timestamp,
                           self._conf['query_key']: bucket['key']}, bucket['doc_count'])
-                self._data.occurrences.setdefault(bucket['key'],
-                                                  EventWindow(self._conf['timeframe'], self.get_ts)).append(event)
+                event_window = EventWindow(self._conf['timeframe'], self.ts_field)
+                self._data.occurrences.setdefault(bucket['key'], event_window).append(event)
                 yield from self.check_for_match(bucket['key'])
 
 
@@ -1048,8 +1057,8 @@ class FlatlineRule(FrequencyRule):
 
     _schema_file = 'schemas/ruletype-flatline.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(FlatlineRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(FlatlineRule, self).__init__(locator, hash_str, conf)
         self.threshold = self._conf['threshold']
 
         # Dictionary mapping query keys to the first event observed
@@ -1073,7 +1082,7 @@ class FlatlineRule(FrequencyRule):
         if not end:
             return
 
-        most_recent_ts = self.get_ts(self._data.occurrences[key].data[-1])
+        most_recent_ts = get_ts(self._data.occurrences[key].data[-1], self.ts_field)
         if self.first_event.get(key) is None:
             self.first_event[key] = most_recent_ts
 
@@ -1097,7 +1106,7 @@ class FlatlineRule(FrequencyRule):
                 # After adding this match, leave the occurrences window alone since it will
                 # be pruned in the next add_data or garbage_collect, but reset the first_event
                 # so that alerts continue to fire until the threshold is passed again.
-                least_recent_ts = self.get_ts(self._data.occurrences[key].data[0])
+                least_recent_ts = get_ts(self._data.occurrences[key].data[0], self.ts_field)
                 timeframe_ago = most_recent_ts - self._conf['timeframe']
                 self.first_event[key] = min(least_recent_ts, timeframe_ago)
             else:
@@ -1106,7 +1115,7 @@ class FlatlineRule(FrequencyRule):
                 self._data.occurrences.pop(key)
 
     def get_match_str(self, extra: dict, match: dict) -> str:
-        ts = match[self._data.ts_field]
+        ts = match[self.ts_field]
         lt = self._conf.get('use_local_time')
         message = 'An abnormally low number of events occurred around %s.\n' % pretty_ts(ts, lt)
         message += 'Between %s and %s, there were less than %s events.\n\n' % (
@@ -1121,8 +1130,8 @@ class FlatlineRule(FrequencyRule):
         # to remove events that occurred more than one timeframe ago, and call on_remove on them.
         default = ['all'] if 'query_key' not in self._conf else []
         for key in list(self._data.occurrences.keys()) or default:
-            event = ({self._data.ts_field: timestamp}, 0)
-            self._data.occurrences.setdefault(key, EventWindow(self._conf['timeframe'], self.get_ts)).append(event)
+            event = ({self.ts_field: timestamp}, 0)
+            self._data.occurrences.setdefault(key, EventWindow(self._conf['timeframe'], self.ts_field)).append(event)
             self.first_event.setdefault(key, timestamp)
             yield from self.check_for_match(key, end=True)
 
@@ -1132,8 +1141,8 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
 
     _schema_file = 'schemas/ruletype-spike.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(SpikeRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(SpikeRule, self).__init__(locator, hash_str, conf)
         self.timeframe = self._conf['timeframe']
 
         self.ref_windows = {}
@@ -1150,18 +1159,18 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
         """ Reset the state and prevent alerts until windows are filled again """
         self.ref_windows[qk].clear()
         self.first_event.pop(qk)
-        self.skip_checks[qk] = dots_get(event, self._data.ts_field) + self._conf['timeframe'] * 2
+        self.skip_checks[qk] = dots_get(event, self.ts_field) + self._conf['timeframe'] * 2
 
     def handle_event(self, event: dict, count: int, qk: str = 'all'):
         self.first_event.setdefault(qk, event)
 
-        self.ref_windows.setdefault(qk, EventWindow(self.timeframe, self.get_ts))
-        self.cur_windows.setdefault(qk, EventWindow(self.timeframe, self.get_ts, self.ref_windows[qk].append))
+        self.ref_windows.setdefault(qk, EventWindow(self.timeframe, self.ts_field))
+        self.cur_windows.setdefault(qk, EventWindow(self.timeframe, self.ts_field, self.ref_windows[qk].append))
 
         self.cur_windows[qk].append((event, count))
 
         # Don't alert if ref window has not yet been filled for this key AND
-        if dots_get(event, self._data.ts_field) - self.first_event[qk][self._data.ts_field] < self._conf['timeframe'] * 2:
+        if dots_get(event, self.ts_field) - self.first_event[qk][self.ts_field] < self._conf['timeframe'] * 2:
             # Reactor has not been running long enough for any alerts OR
             if not self.ref_window_filled_once:
                 return
@@ -1169,7 +1178,7 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
             if not (self._conf.get('query_key') and self._conf.get('alert_on_new_data')):
                 return
             # An alert for this qk has recently fired
-            if qk in self.skip_checks and dots_get(event, self._data.ts_field) < self.skip_checks[qk]:
+            if qk in self.skip_checks and dots_get(event, self.ts_field) < self.skip_checks[qk]:
                 return
         else:
             self.ref_window_filled_once = True
@@ -1241,15 +1250,15 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
                  'reference_count': reference_count,
                  'key': hashable(dots_get(event, qk)) if qk else 'all',
                  'num_events': spike_count,
-                 'began_at': self.get_ts(self.cur_windows[qk].data[0]),
-                 'ended_at': self.get_ts(self.cur_windows[qk].data[-1])}
+                 'began_at': get_ts(self.cur_windows[qk].data[0], self.ts_field),
+                 'ended_at': get_ts(self.cur_windows[qk].data[-1], self.ts_field)}
 
         return extra, event
 
     def get_match_str(self, extra: dict, match: dict) -> str:
         spike_count = extra['spike_count']
         ref_count = extra['reference_count']
-        ts_str = pretty_ts(match[self._data.ts_field], self._conf['use_local_time'])
+        ts_str = pretty_ts(match[self.ts_field], self._conf['use_local_time'])
         timeframe = self._conf['timeframe']
         if self.field_value is None:
             message = 'An abnormal number (%d) of events occurred around %s.\n' % (spike_count, ts_str)
@@ -1270,7 +1279,7 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
                 self.cur_windows.pop(qk)
                 self.ref_windows.pop(qk)
                 continue
-            placeholder = {self._data.ts_field: timestamp, "placeholder": True}
+            placeholder = {self.ts_field: timestamp, "placeholder": True}
             # The placeholder may trigger an alert, in which case, qk will be expected
             if qk != 'all':
                 dots_set(placeholder, self._conf['query_key'], qk)
@@ -1281,13 +1290,13 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
         if len(counts) > 1:
             raise ReactorException('SpikeRule.add_count_data can only accept one count at a time')
         for ts, count in counts.items():
-            yield from self.handle_event({self._data.ts_field: ts}, count, 'all')
+            yield from self.handle_event({self.ts_field: ts}, count, 'all')
 
     def add_terms_data(self, terms) -> Generator[dict, None, None]:
         for timestamp, buckets in terms.items():
             for bucket in buckets:
                 count = bucket['doc_count']
-                event = {self._data.ts_field: timestamp,
+                event = {self.ts_field: timestamp,
                          self._conf['query_key']: bucket['key']}
                 key = bucket['key']
                 yield from self.handle_event(event, count, key)
@@ -1299,8 +1308,8 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
     """ A Rule that detects a new value in a list of fields. """
     # TODO: alter self.seen_values to be a mapping of value to timestamp of last seen - add option to forget old terms
     #  outside timeframe
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(NewTermRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(NewTermRule, self).__init__(locator, hash_str, conf)
         self.seen_values = {}
         # Allow the use of query_key or fields
         if 'fields' not in self._conf and 'query_key' not in self._conf:
@@ -1315,8 +1324,9 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
             raise ConfigException('use_terms_query can only be used with a single non-composite field')
         if self._conf.get('use_terms_query'):
             if [self._conf['query_key']] != self.fields:
-                raise ConfigException('If use_terms_query is specified, you cannot specify different query_key and fields')
-            if not self._conf.get('query_key').endswith('.keyword') and not self._conf.get('query_key').endswith('.raw'):
+                raise ConfigException('If use_terms_query is specified,'
+                                      ' you cannot specify different query_key and fields')
+            if not self._conf.get('query_key').endswith('.keyword'):
                 if self._conf.get('use_keyword_postfix', True):
                     reactor_logger.warning('If query_key is a non-keyword field, you must set '
                                            'use_keyword_postfix to false, or add .keyword/.raw to your query_key')
@@ -1345,8 +1355,7 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
         for field in self.fields:
             tmp_start = start
             tmp_end = min(start + step, end)
-            time_filter = {self._data.ts_field: {'lt': dt_to_ts(tmp_end),
-                                                 'gte': dt_to_ts(tmp_start)}}
+            time_filter = {self.ts_field: {'lt': dt_to_ts(tmp_end), 'gte': dt_to_ts(tmp_start)}}
             query_template['filter'] = {'bool': {'must': [{'range': time_filter}]}}
             query = {'aggs': {'filtered': query_template}}
             if 'filter' in self._conf:
@@ -1402,8 +1411,7 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
                     break
                 tmp_start = tmp_end
                 tmp_end = min(tmp_start + step, end)
-                time_filter[self._data.ts_field] = {'lt': dt_to_ts(tmp_end),
-                                                    'gte': dt_to_ts(tmp_start)}
+                time_filter[self.ts_field] = {'lt': dt_to_ts(tmp_end), 'gte': dt_to_ts(tmp_start)}
 
             for key, values in self.seen_values.items():
                 if not values:
@@ -1531,13 +1539,13 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
 
     def generate_match(self, field, value, event: dict = None, timestamp=None) -> (dict, dict):
         """ Generate a match and, if there is a value, store in `self.seen_values[field]`. """
-        event = event or {field: value, self._data.ts_field: timestamp}
+        event = event or {field: value, self.ts_field: timestamp}
         event = copy.deepcopy(event)
         qk = self._conf.get('query_key', None)
         extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
                  'num_events': 1,
-                 'began_at': dots_get(event, self._data.ts_field),
-                 'ended_at': dots_get(event, self._data.ts_field)}
+                 'began_at': dots_get(event, self.ts_field),
+                 'ended_at': dots_get(event, self.ts_field)}
         if value is None:
             extra['missing_field'] = field
         else:
@@ -1560,8 +1568,8 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
 
     _schema_file = 'schemas/ruletype-cardinality.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(CardinalityRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(CardinalityRule, self).__init__(locator, hash_str, conf)
         if 'max_cardinality' not in self._conf and 'min_cardinality' not in self._conf:
             raise ConfigException('CardinalityRule must have one of either max_cardinality or min_cardinality')
         self.cardinality_field = self._conf['cardinality_field']
@@ -1575,36 +1583,36 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
             # If no query_key, we use the key 'all' for all events
             key = hashable(dots_get(event, qk)) if qk else 'all'
             self.cardinality_cache.setdefault(key, {})
-            self.first_event.setdefault(key, dots_get(event, self._data.ts_field))
+            self.first_event.setdefault(key, dots_get(event, self.ts_field))
             value = hashable(dots_get(event, self.cardinality_field))
             if value is not None:
                 # Store this timestamp as most recent occurrence of the term
-                self.cardinality_cache[key][value] = dots_get(event, self._data.ts_field)
+                self.cardinality_cache[key][value] = dots_get(event, self.ts_field)
                 yield from self.check_for_match(key, event)
 
     def check_for_match(self, key, event, garbage_collect=True):
-        time_elapsed = dots_get(event, self._data.ts_field) - self.first_event.get(key, dots_get(event, self._data.ts_field))
+        time_elapsed = dots_get(event, self.ts_field) - self.first_event.get(key, dots_get(event, self.ts_field))
         timeframe_elapsed = time_elapsed > self.timeframe
         if (len(self.cardinality_cache[key]) > self._conf.get('max_cardinality', float('inf')) or
                 (len(self.cardinality_cache[key]) < self._conf.get('min_cardinality', 0.0) and timeframe_elapsed)):
             # If there might be a match, run garbage collect first to remove outdated terms
             # Only run it if there might be a match so it doesn't impact performance
             if garbage_collect:
-                yield from self.garbage_collect(dots_get(event, self._data.ts_field))
+                yield from self.garbage_collect(dots_get(event, self.ts_field))
                 yield from self.check_for_match(key, event, False)
             else:
                 self.first_event.pop(key, None)
                 extra = {'cardinality': self.cardinality_cache[key],
                          'key': key,
                          'num_events': len(self.cardinality_cache[key]),
-                         'began_at': self.first_event.get(key, dots_get(event, self._data.ts_field)),
-                         'ended_at': dots_get(event, self._data.ts_field)}
+                         'began_at': self.first_event.get(key, dots_get(event, self.ts_field)),
+                         'ended_at': dots_get(event, self.ts_field)}
                 yield self.add_match(extra, event)
 
     def get_match_str(self, extra: dict, match: dict) -> str:
         lt = self._conf.get('use_local_time')
-        began_time = pretty_ts(ts_to_dt(dots_get(match, self._data.ts_field)) - self._conf['timeframe'], lt)
-        ended_time = pretty_ts(dots_get(match, self._data.ts_field), lt)
+        began_time = pretty_ts(ts_to_dt(dots_get(match, self.ts_field)) - self._conf['timeframe'], lt)
+        ended_time = pretty_ts(dots_get(match, self.ts_field), lt)
         if 'max_cardinality' in self._conf:
             return 'A maximum of %d unique %s(s) occurred since last alert or between %s and %s\n\n' % (
                 self._conf['max_cardinality'],
@@ -1631,7 +1639,7 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
 
             # Create a placeholder event for min_cardinality match occurred
             if 'min_cardinality' in self._conf:
-                event = {self._data.ts_field: timestamp}
+                event = {self.ts_field: timestamp}
                 if 'query_key' in self._conf:
                     dots_set(event, self._conf['query_key'], qk)
                 yield from self.check_for_match(qk, event, False)
@@ -1640,8 +1648,8 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
 class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
     allowed_aggregations = frozenset(['min', 'max', 'avg', 'sum', 'cardinality', 'value_count'])
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(BaseAggregationRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(BaseAggregationRule, self).__init__(locator, hash_str, conf)
         bucket_interval = self._conf.get('bucket_interval')
         if bucket_interval:
             seconds = total_seconds(bucket_interval)
@@ -1685,7 +1693,8 @@ class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
     def unwrap_term_buckets(self, timestamp, term_buckets):
         for term_data in term_buckets:
             if 'interval_aggs' in term_data:
-                yield from self.unwrap_interval_buckets(timestamp, term_data['key'], term_data['interval_aggs']['buckets'])
+                yield from self.unwrap_interval_buckets(timestamp, term_data['key'],
+                                                        term_data['interval_aggs']['buckets'])
             else:
                 yield from self.check_for_matches(timestamp, term_data['key'], term_data)
 
@@ -1698,8 +1707,8 @@ class MetricAggregationRule(BaseAggregationRule):
 
     _schema_file = 'schemas/ruletype-metric_aggregation.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(MetricAggregationRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(MetricAggregationRule, self).__init__(locator, hash_str, conf)
         if 'max_threshold' not in self._conf and 'min_threshold' not in self._conf:
             raise ConfigException('MetricAggregationRule must have one of either max_threshold or min_threshold')
         if self._conf['metric_agg_type'] not in self.allowed_aggregations:
@@ -1722,11 +1731,12 @@ class MetricAggregationRule(BaseAggregationRule):
 
     def check_for_matches(self, timestamp, query_key, aggregation_data):
         if 'compound_query_key' in self._conf:
-            yield from self.check_matches_recursive(timestamp, query_key, aggregation_data, self._conf['compound_query_key'], {})
+            yield from self.check_matches_recursive(timestamp, query_key,
+                                                    aggregation_data, self._conf['compound_query_key'], {})
         else:
             metric_val = aggregation_data[self.metric_key]['value']
             if self.crossed_thresholds(metric_val):
-                match = {self._data.ts_field: timestamp,
+                match = {self.ts_field: timestamp,
                          self.metric_key: metric_val}
                 if query_key is not None:
                     match[self._conf['query_key']] = query_key
@@ -1747,7 +1757,7 @@ class MetricAggregationRule(BaseAggregationRule):
         else:
             metric_val = aggregation_data[self.metric_key]['value']
             if self.crossed_thresholds(metric_val):
-                match_data[self._data.ts_field] = timestamp
+                match_data[self.ts_field] = timestamp
                 match_data[self.metric_key] = metric_val
 
                 # Add compound key to payload to allow alerts to trigger for every unique occurrence
@@ -1774,8 +1784,8 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
 
     _schema_file = 'schemas/ruletype-spike_metric_aggregation.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(SpikeMetricAggregationRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(SpikeMetricAggregationRule, self).__init__(locator, hash_str, conf)
 
         # Metric aggregation alert things
         self.metric_key = 'metric_%s_%s' % (self._conf['metric_agg_key'], self._conf['metric_agg_type'])
@@ -1807,7 +1817,7 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
                 yield from self.unwrap_term_buckets(timestamp, payload_data['bucket_aggs'])
             else:
                 # no time / term split, just focus on aggregations
-                event = {self._data.ts_field: timestamp}
+                event = {self.ts_field: timestamp}
                 agg_value = payload_data[self.metric_key]['value']
                 yield from self.handle_event(event, agg_value, 'all')
 
@@ -1826,7 +1836,7 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
 
             qk_str = ','.join(qk)
             agg_value = term_data[self.metric_key]['value']
-            event = {self._data.ts_field: timestamp,
+            event = {self.ts_field: timestamp,
                      self._conf['query_key']: qk_str}
             # Pass to SpikeRule's tracker
             yield from self.handle_event(event, agg_value, qk_str)
@@ -1837,7 +1847,7 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
     def get_match_str(self, extra: dict, match: dict) -> str:
         message = 'An abnormal %s of %s (%s) occurred around %s.\n' % (
             self._conf['metric_agg_type'], self._conf['metric_agg_key'], round(extra['spike_count']),
-            pretty_ts(dots_get(match, self._data.ts_field), self._conf['use_local_time']))
+            pretty_ts(dots_get(match, self.ts_field), self._conf['use_local_time']))
         message += 'Preceding that time, there was %s of %s of (%s) within %s\n\n' % (
             self._conf['metric_agg_type'], self._conf['metric_agg_key'],
             round(extra['reference_count']), self._conf['timeframe'])
@@ -1852,8 +1862,8 @@ class PercentageMatchRule(BaseAggregationRule):
 
     _schema_file = 'schemas/ruletype-percentage_match.yaml'
 
-    def __init__(self, locator: str, hash: str, conf: dict):
-        super(PercentageMatchRule, self).__init__(locator, hash, conf)
+    def __init__(self, locator: str, hash_str: str, conf: dict):
+        super(PercentageMatchRule, self).__init__(locator, hash_str, conf)
         if all([f not in self._conf for f in ['max_percentage', 'min_percentage']]):
             raise ConfigException('PercentageMatchRule must have one of either min_percentage or max_percentage')
 
@@ -1904,7 +1914,7 @@ class PercentageMatchRule(BaseAggregationRule):
                              'num_events': 1,
                              'began_at': timestamp,
                              'ended_at': timestamp}
-                    event = {self._data.ts_field: timestamp}
+                    event = {self.ts_field: timestamp}
                     if query_key is not None:
                         event[self._conf['query_key']] = query_key
                     yield self.add_match(extra, event)
