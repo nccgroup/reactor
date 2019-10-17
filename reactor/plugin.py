@@ -94,7 +94,7 @@ class HttpServerPlugin(BasePlugin):
         self._handler_class = import_class(self.conf.get('handler_class', self.Handler))
 
     def start(self):
-        logging.getLogger('reactor.plugin.http_server').info('Start http server on %d', int(self.conf.get('port', 7100)))
+        logging.getLogger('reactor.plugin.http_server').info('Starting plugin (port=%s)', self.conf.get('port', 7100))
         self._httpd = self._server_class(('', int(self.conf.get('port', 7100))), self._handler_class)
         self._httpd.reactor = self.reactor
         if self.conf.get('ssl'):

@@ -121,7 +121,7 @@ class Reactor(object):
                                 '%s alerts sent (%s silenced)',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(end_time, rule.conf('use_local_time')),
-                                rule.name,
+                                rule.locator,
                                 rule.data.cumulative_hits,
                                 rule.data.num_duplicates,
                                 rule.data.num_matches,
@@ -566,7 +566,6 @@ class Core(object):
 
         try:
             query = {'query': {'term': {'_id': uuid}}}
-            # TODO: look into using `version`
             res = self.es_client.search(index=self.conf['alert_alias'], body=query, size=1)
 
             if res['hits']['hits']:
@@ -1233,7 +1232,8 @@ class Core(object):
             reactor_logger.log(logging.INFO if rule.data.alerts_sent else logging.DEBUG,
                                'Ran from %s to %s "%s": %s query hits (%s already seen), %s matches, '
                                '%s alerts sent (%s silenced)',
-                               old_start_time, pretty_ts(end_time, rule.conf('use_local_time')), rule.name,
+                               old_start_time, pretty_ts(end_time, rule.conf('use_local_time')),
+                               rule.locator,
                                rule.data.cumulative_hits,
                                rule.data.num_duplicates,
                                rule.data.num_matches,
@@ -1247,7 +1247,7 @@ class Core(object):
                 reactor_logger.warning('Querying from %s to %s "%s" took longer than %s (%s)!',
                                        old_start_time,
                                        pretty_ts(end_time, rule.conf('use_local_time')),
-                                       rule.name,
+                                       rule.locator,
                                        rule.run_every,
                                        datetime.timedelta(seconds=rule.data.time_taken))
 

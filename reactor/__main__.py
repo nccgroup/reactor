@@ -275,7 +275,7 @@ def perform_hits(config: dict, args: dict) -> int:
             reactor_logger.info('Queried from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(start_time, rule.conf('use_local_time')),
-                                rule.name,
+                                rule.locator,
                                 hits[list(hits.keys())[0]])
 
         else:
@@ -308,7 +308,7 @@ def perform_hits(config: dict, args: dict) -> int:
             reactor_logger.info('Queried from %s to %s "%s": %s query hits',
                                 pretty_ts(start_time, rule.conf('use_local_time')),
                                 pretty_ts(start_time, rule.conf('use_local_time')),
-                                rule.name,
+                                rule.locator,
                                 len(hits))
 
     return 0
@@ -376,9 +376,8 @@ def main(args: list = None):
     if args['log_level']:
         reactor_logger.setLevel(args['log_level'])
 
-    # Silence the APScheduler logs if not in DEBUG mode
-    if reactor_logger.level > logging.DEBUG:
-        logging.getLogger('apscheduler').addHandler(logging.NullHandler())
+    # Increase the APScheduler logging level to show only error/critical
+    logging.getLogger('apscheduler').setLevel(logging.ERROR)
 
     if args['disable_warnings']:
         urllib3.disable_warnings()

@@ -563,19 +563,20 @@ class Rule(object):
             if self._data.num_hits > self.max_hits:
                 hits = hits[:(self.max_hits % self.conf('max_query_size'))]
             self._data.num_hits = self.max_hits
-            reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
-                                 self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
+            reactor_logger.debug('Queried rule "%s" from %s to %s: %s / %s hits (%s total hits)',
+                                 self.locator, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
                                  self._data.num_hits, len(hits), self._data.total_hits)
-            reactor_logger.warning('Maximum hits reached (%s hits of %s total hits), '
-                                   'this could trigger false positives alerts', self.max_hits, self._data.total_hits)
+            reactor_logger.warning('Maximum hits reached querying "%s" (%s hits of %s total hits), '
+                                   'this could trigger false positives alerts',
+                                   self.locator, self.max_hits, self._data.total_hits)
         elif self._data.total_hits > self.conf('max_query_size'):
-            reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits) (scrolling...)',
-                                 self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
+            reactor_logger.debug('Queried rule "%s" from %s to %s: %s / %s hits (%s total hits) (scrolling...)',
+                                 self.locator, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
                                  self._data.num_hits, len(hits), self._data.total_hits)
             self._data.scroll_id = res['_scroll_id']
         else:
-            reactor_logger.debug('Queried rule %s from %s to %s: %s / %s hits (%s total hits)',
-                                 self.name, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
+            reactor_logger.debug('Queried rule "%s" from %s to %s: %s / %s hits (%s total hits)',
+                                 self.locator, pretty_ts(start_time, lt), pretty_ts(end_time, lt),
                                  self._data.num_hits, len(hits), self._data.total_hits)
 
         hits = self.process_hits(hits)
@@ -606,7 +607,7 @@ class Rule(object):
 
         self._data.num_hits += res['count']
         lt = self.conf('use_local_time')
-        reactor_logger.debug('Queried rule %s from %s to %s: %s hits', self.name,
+        reactor_logger.debug('Queried rule "%s" from %s to %s: %s hits', self.locator,
                              pretty_ts(start_time, lt), pretty_ts(end_time, lt), res['count'])
 
         return {end_time: res['count']}
@@ -654,7 +655,7 @@ class Rule(object):
 
         self._data.num_hits += len(buckets)
         lt = self.conf('use_local_time')
-        reactor_logger.debug('Queried rule %s from %s to %s: %s buckets', self.name,
+        reactor_logger.debug('Queried rule "%s" from %s to %s: %s buckets', self.locator,
                              pretty_ts(start_time, lt), pretty_ts(end_time, lt), len(buckets))
 
         return {end_time: buckets}
