@@ -67,6 +67,14 @@ class WorkingData(object):
         self.silence_cache = {}
         self.alerts_cache = {}
 
+    def __repr__(self):
+        verbose_keys = ['hits', 'agg_alerts', 'aggregate_alert_time', 'current_aggregate_id',
+                        'processed_hits', 'occurrences', 'silence_cache', 'alerts_cache']
+        fields = {k: v for k, v in self.__dict__.items() if k not in verbose_keys}
+        for k in verbose_keys:
+            fields[f'num_{k}'] = len(self.__dict__.get(k, []))
+        return 'WorkingData<%s>' % ' '.join(['%s=%s' % (k, v) for k, v in fields.items()])
+
     def reset(self):
         """ Reset working data ready for the rule to be run. """
         # Reset the rule counters.
@@ -99,6 +107,10 @@ class EventWindow(object):
         self.ts_field = ts_field
         self.data = SortedKeyList(key=self.get_ts)
         self.running_count = 0
+
+    def __repr__(self):
+        fields = {k: v for k, v in self.__dict__.items()}
+        return 'EventWindow<%s>' % ' '.join([f'{k}={v}' for k, v in fields.items()])
 
     def __iter__(self):
         return iter(self.data)
