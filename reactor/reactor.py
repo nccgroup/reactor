@@ -8,6 +8,8 @@ import sys
 import threading
 import time
 import traceback
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from typing import Optional
 
 import apscheduler.events
@@ -17,11 +19,11 @@ import apscheduler.triggers.interval
 import croniter
 import elasticsearch.helpers
 import pytz
-from elasticsearch import Elasticsearch
-
 import reactor.kibana
 import reactor.raft
 import reactor.rule
+from apscheduler.executors.pool import ProcessPoolExecutor as _ProcessPoolExecutor
+from elasticsearch import Elasticsearch
 from reactor.exceptions import ReactorException, QueryException
 from reactor.loader import Rule, RuleLoader
 from reactor.util import (
@@ -82,7 +84,7 @@ class Reactor(object):
         }
         executors = {
             'default': {'type': 'threadpool', 'max_workers': 3},
-            'processpool': apscheduler.executors.pool.ProcessPoolExecutor(max_workers=self.max_processpool),
+            'processpool': FixedProcessPoolExecutor(max_workers=self.max_processpool),
         }
         job_defaults = {
             'coalesce': True,
@@ -1351,3 +1353,24 @@ class Core(object):
                         ]
 
         return alerts_sent
+
+
+class FixedProcessPoolExecutor(_ProcessPoolExecutor):
+    """
+    Fixes a bug with ``apscheduler.executors.pool.ProcessPoolExecutor`` which currently cannot handle the
+    ``ProcessPoolExecutor`` raising a ``BrokenProcessPool`` exception. This fix was got from
+    https://github.com/agronholm/apscheduler/issues/362 and will perform a single attempt to recover.
+    """
+    def __init__(self, max_workers=10):
+        self._max_workers = max_workers
+        super().__init__(max_workers)
+
+    def _do_submit_job(self, job, run_times):
+        try:
+            return super()._do_submit_job(job, run_times)
+        except BrokenProcessPool:
+            self._logger.warning('Process pool is broken. Restarting executor.')
+            self._pool.shutdown(wait=True)
+            self._pool = ProcessPoolExecutor(int(self._max_workers))
+
+            return super()._do_submit_job(job, run_times)
