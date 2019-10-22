@@ -34,7 +34,7 @@ Rule Configuration Cheat Sheet
 +---------------------------------------------------------------+           |
 | ``verify_certs`` (boolean, default True)                      |           |
 +---------------------------------------------------------------+           |
-| ``elasticsearch.susername`` (string, no default)              |           |
+| ``elasticsearch.username`` (string, no default)               |           |
 +---------------------------------------------------------------+           |
 | ``elasticsearch.password`` (string, no default)               |           |
 +---------------------------------------------------------------+           |

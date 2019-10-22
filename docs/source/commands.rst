@@ -272,16 +272,17 @@ Get rule hits
 Console command
 ------------------
 
-``$ reactor console`` provides a basic curses view of Reactor.
+``$ reactor console`` provides a basic curses view of Reactor. It provides command line access to viewing reactor
+indices and should be used for debugging purposes by developers or administrators.
 
 .. code-block:: console
 
     $ reactor console --help
     usage: reactor console [-h] [-c my_config.yaml]
                            [-l {CRITICAL,ERROR,WARNING,INFO,DEBUG,NOTSET}]
-                           [--patience units=val]
-                           [--index {alert,error,silence,status}]
-                           [--max-hits [0..100]]
+                           [--patience units=val] [--suppress]
+                           [-i {alerts,error,silence,status}] [-r REFRESH]
+                           [--max-hits [1..]]
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -291,6 +292,118 @@ Console command
                             Set the logging level
       --patience units=val  Maximum time to wait for ElasticSearch to become
                             responsive (e.g. seconds=30)
-      --index {alert,error,silence,status}
+      --suppress            Disable warnings from urllib3
+      -i {alerts,error,silence,status}, --index {alerts,error,silence,status}
                             Index to retrieve hits from
-      --max-hits [0..100]   Maximum number of hits to retrieve (default: 10)
+      -r REFRESH, --refresh REFRESH
+                            Number of seconds between automatic refresh
+      --max-hits [1..]      Maximum number of hits to retrieve
+
+Several optional arguments are available when running Reactor console:
+
+    --config <my_config.yaml>   will specify the configuration file to use. The default is ``config.yaml`` found in the
+                                current working directory.
+    --patience <units=value>    will specify the duration to wait for Elasticsearch to become responsive.
+    --suppress                  will specify whether to disable urllib3 warnings.
+    --index <index>             will specify the starting view of console. The default is ``indices``.
+    --refresh <seconds>         will specify number of seconds between automatic refresh of the current view. The
+                                default is not have automatic refresh.
+    --max-hits <integer>        will specify the maximum number of hits that will be displayed by the console.
+
+Keyboard commands
+^^^^^^^^^^^^^^^^^
+
+Reactor console is controlled by keyboard commands. Below is a complete list of the commands:
+
+.. table::
+    :widths: 25 75
+
+    +---------------+--------------------------------------------------------------------------------------------------+
+    |   Switch views                                                                                                   |
+    +===============+==================================================================================================+
+    | **Key**       | **Action**                                                                                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``i``         | Switch to view reactor indices                                                                   |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``a``         | Switch to view ``reactor_alerts`` (see global ``writeback_alias`` option)                        |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``e``         | Switch to view ``reactor_error`` (see global ``writeback_index`` option)                         |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``s``         | Switch to view ``reactor_silence`` (see global ``writeback_index`` option)                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``t``         | Switch to view ``reactor_status`` (see global ``writeback_index`` option)                        |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``r``         | Refresh the current view immediately                                                             |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``ESC``       | Switch from item view to item index view or from index view to indices view                      |
+    +---------------+--------------------------------------------------------------------------------------------------+
+
+.. table::
+    :widths: 25 75
+
+    +---------------+--------------------------------------------------------------------------------------------------+
+    |   Selecting a row                                                                                                |
+    +===============+==================================================================================================+
+    | **Key**       | **Action**                                                                                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``1..9``      | Start to enter a row number to select (**note** disables auto refresh)                           |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``BACKSPACE`` | Delete the last entered digit of the line number                                                 |
+    +---------------+                                                                                                  |
+    | ``DEL``       |                                                                                                  |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``.``         | Select the current specified row                                                                 |
+    +---------------+                                                                                                  |
+    | ``Enter``     |                                                                                                  |
+    +---------------+--------------------------------------------------------------------------------------------------+
+
+.. table::
+    :widths: 25 75
+
+    +---------------+--------------------------------------------------------------------------------------------------+
+    |   Scrolling table                                                                                                |
+    +===============+==================================================================================================+
+    | **Key**       | **Action**                                                                                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_HOME``  | Scroll the view to the first page                                                                |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_LEFT``  | Scroll the view to the previous page                                                             |
+    +---------------+                                                                                                  |
+    | ``KEY_PPAGE`` |                                                                                                  |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_RIGHT`` | Scroll the view to the next page                                                                 |
+    +---------------+                                                                                                  |
+    | ``KEY_NPAGE`` |                                                                                                  |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_END``   | Scroll the view to the last page                                                                 |
+    +---------------+--------------------------------------------------------------------------------------------------+
+
+.. table::
+    :widths: 25 75
+
+    +---------------+--------------------------------------------------------------------------------------------------+
+    |   Scrolling item                                                                                                 |
+    +===============+==================================================================================================+
+    | **Key**       | **Action**                                                                                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_HOME``  | Scroll the view to the top                                                                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_UP``    | Scroll the view up                                                                               |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_DOWN``  | Scroll the view down                                                                             |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``KEY_END``   | Scroll the view to the bottom                                                                    |
+    +---------------+--------------------------------------------------------------------------------------------------+
+
+.. table::
+    :widths: 25 75
+
+    +---------------+--------------------------------------------------------------------------------------------------+
+    |   Exiting Console                                                                                                |
+    +===============+==================================================================================================+
+    | **Key**       | **Action**                                                                                       |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``q``         | Quit the console                                                                                 |
+    +---------------+--------------------------------------------------------------------------------------------------+
+    | ``^C``        | Quit the console (if pressed 3 times then will call system exit)                                 |
+    +---------------+--------------------------------------------------------------------------------------------------+

@@ -191,9 +191,19 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                                        help='Start the reactor console')
     console_sp.set_defaults(action='console')
     console_sp.add_argument('-i', '--index',
-                            default=None,
-                            choices=['alert', 'error', 'silence', 'status'],
+                            default='indices',
+                            choices=['alerts', 'error', 'silence', 'status'],
                             help='Index to retrieve hits from')
+    console_sp.add_argument('-r', '--refresh',
+                            default=None,
+                            type=parse_positive_int,
+                            help='Number of seconds between automatic refresh')
+    console_sp.add_argument('--max-hits',
+                            type=parse_positive_int,
+                            metavar='[1..]',
+                            default=10000,
+                            help='Maximum number of hits to retrieve')
+
     # Silence command
     silence_sp = sub_parser.add_parser('silence', parents=[config, patience, disable_warnings],
                                        help='Silence a set of rules')
@@ -215,7 +225,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     return parser, vars(parser.parse_args(args))
 
 
-def handle_signal(recv_signal, frame):
+def handle_signal(recv_signal, _):
     sys.exit(recv_signal)
 
 
@@ -315,9 +325,16 @@ def perform_hits(config: dict, args: dict) -> int:
 
 
 def perform_console(config: dict, args: dict) -> int:
-    from reactor.console import run_console
-    run_console(Reactor(config, args))
-    return 0
+    import reactor.console
+
+    console = reactor.console.Console(Reactor(config, args))
+
+    # Set up the signal handler
+    signal.signal(signal.SIGINT, console.handle_signal)
+    signal.signal(signal.SIGWINCH, console.handle_signal)
+
+    # Start the console
+    return console.run()
 
 
 def perform_silence(config: dict, args: dict) -> int:
