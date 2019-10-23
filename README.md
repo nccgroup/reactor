@@ -41,6 +41,12 @@ rule:
   elasticsearch: *elasticsearch
 ```
 
+### Git Hooks
+This project provides git hooks to stop user error. Please run the following commands:
+
+```shell script
+$ cp .git-hooks-pre-push .git/hooks/pre-push
+```
 
 ## Running tests
 Reactor is covered by two types of testing: unit and integration. Unit testing to ensure
