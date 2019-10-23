@@ -64,9 +64,7 @@ b:reactor:
 b:docs:
   stage: build
   only:
-    - branches
-  except:
-    - /\/feature\/.*$/
+    - tags
   script:
     - python -V
     - pip install virtualenv
