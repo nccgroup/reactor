@@ -47,6 +47,35 @@ properties:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9\.\-]{1,255}:[0-9]+$'
 
+      ssl:
+        type: object
+        title: "TLS connection configuration"
+        default: {enabled: false}
+        required: [ca_certs, node_cert, node_key]
+
+        properties:
+          enabled:
+            type: boolean
+            title: "Enable TLS connection to ElasticSearch"
+            default: true
+            examples: [true, false]
+
+          ca_certs:
+            type: string
+            title: "Path to CA certificate file or directory"
+            examples:
+              - /var/ssl/reactor/
+          node_cert:
+            type: string
+            title: "Path to node certificate"
+            examples:
+              - /var/ssl/reactor/cluster-node.crt
+          node_key:
+            type: string
+            title: "Path to node private key"
+            examples:
+              - /var/ssl/reactor/cluster-node.key
+
 
   alert_time_limit:
     default: {days: 2}

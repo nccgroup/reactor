@@ -46,6 +46,13 @@ alert_alias: alerts
 #  host: "<hostname>:<port>"
 #  neighbours: ["<hostname>:<port>"]
 
+  # (optional) Enable TLS transport between cluster nodes
+#  ssl:
+#    enabled: false
+#    ca_certs: ""
+#    node_cert: ""
+#    node_key: ""
+
 
 # Configuration to connect to the writeback ElasticSearch cluster
 elasticsearch: &elasticsearch

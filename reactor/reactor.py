@@ -75,6 +75,10 @@ class Reactor(object):
             self.cluster = reactor.cluster.Node('localhost')
         else:
             self.cluster = reactor.cluster.RaftNode(self.conf['cluster']['host'], self.conf['cluster']['neighbours'])
+            if self.conf['cluster']['ssl']['enabled']:
+                self.cluster.set_ssl(key_file=self.conf['cluster']['ssl'].get('node_key'),
+                                     crt_file=self.conf['cluster']['ssl'].get('node_cert'),
+                                     ca_crt=self.conf['cluster']['ssl'].get('ca_certs'))
         self.cluster.meta['cpu_count'] = self.max_processpool
         self.cluster.meta['executing'] = set()
         self.cluster_info = {'leader': None,

@@ -534,7 +534,7 @@ class RaftNode(Node):
 
                 if recipient not in pool:
                     sock = socket.create_connection(recipient.split(':', 2))
-                    sock = self._wrap_socket(sock, recipient[0])
+                    sock = self._wrap_socket(sock, recipient.split(':', 2)[0])
                     pool[recipient] = sock
 
                 msg_body = pickle.dumps(msg)
