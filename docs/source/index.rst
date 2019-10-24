@@ -19,5 +19,6 @@ Contents:
     recipes/writing_filters
     recipes/signing_requests
     customise
+    code_reference
 
 * :ref:`genindex`

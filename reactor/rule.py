@@ -2,7 +2,7 @@ import copy
 import datetime as dt
 import os
 import time
-from typing import Generator, List, Optional
+from typing import Iterable, List, Optional
 
 import elasticsearch
 import reactor.enhancement
@@ -163,40 +163,20 @@ class EventWindow(object):
             return None
 
 
-class AcceptsHitsDataMixin(object):
-    """ A mixin class to denote that the Rule accepts hits data. """
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
-        raise NotImplementedError()
-
-
-class AcceptsCountDataMixin(object):
-    """ A mixin class to denote that the Rule accepts count data. """
-    def add_count_data(self, counts) -> Generator[dict, None, None]:
-        raise NotImplementedError()
-
-
-class AcceptsTermsDataMixin(object):
-    """ A mixin class to denote that the Rule accepts terms data. """
-    def add_terms_data(self, counts) -> Generator[dict, None, None]:
-        raise NotImplementedError()
-
-
-class AcceptsAggregationDataMixin(object):
-    """ A mixin class to denote that the Rule accepts aggregation data. """
-    def add_aggregation_data(self, payload) -> Generator[dict, None, None]:
-        raise NotImplementedError()
-
-
 class Rule(object):
+    """
+    The base class for all rules used by Reactor. Every rule must implement one of ``Rule.add_<type>_data`` methods
+    which are used by Reactor to add data to the rule.
+
+    :param locator: Locator of the rule
+    :param hash_str: Uniquely identifying hash of the rule and its configuration
+    :param conf: Rule configuration dictionary
+    """
+
     _schema_file = None
     _schema_relative = __file__
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        """
-        :param locator: Locator of the rule
-        :param hash_str: Uniquely identifying hash of the rule and its configuration
-        :param conf: Configuration dictionary
-        """
         self.locator = locator
         self._conf = conf
         self._hash = hash_str
@@ -253,6 +233,8 @@ class Rule(object):
 
     def conf(self, key: str, default: any = None) -> any:
         """
+        Retrieve a value, in dots notation, from the rule configuration or ``default`` if not present.
+
         :param key: Key, in dots notation, to be found
         :param default: (optional) Default value if key not found
         """
@@ -260,6 +242,8 @@ class Rule(object):
 
     def set_conf(self, key: str, value: any) -> bool:
         """
+        Set the value of ``key`` to ``value`` in the rule configuration.
+
         :param key: Key, in dots notation, to be set
         :param value: Value
         """
@@ -314,6 +298,46 @@ class Rule(object):
             else:
                 raise ReactorException(
                     'Could not download filters from %s' % self.conf('filter.download_dashboard'))
+
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
+        """
+        Implement this method to allow the subclass Rule accept hits data.
+        This method should check for matches while adding ``data`` and immediately yield them.
+
+        :param data: List of hits from Elasticsearch, each of which is a dictionary
+        :return: An iterable of (extra, event) rule match tuples
+        """
+        raise NotImplementedError()
+
+    def add_count_data(self, counts) -> Iterable[tuple]:
+        """
+        Implement this method to allow the subclass Rule accept count data.
+        This method should check for matches while adding ``counts`` and immediately yield them.
+
+        :param counts: A dictionary mapping timestamps to hit counts
+        :return: An iterable of (extra, event) rule match tuples
+        """
+        raise NotImplementedError()
+
+    def add_terms_data(self, terms) -> Iterable[tuple]:
+        """
+        Implement this method to allow the subclass Rule accept terms data.
+        This method should check for matches while adding ``terms`` and immediately yield them.
+
+        :param terms: A list of buckets with a key, corresponding to ``query_key``, and the count
+        :return: An iterable of (extra, event) rule match tuples
+        """
+        raise NotImplementedError()
+
+    def add_aggregation_data(self, payload) -> Iterable[tuple]:
+        """
+        Implement this method to allow the subclass Rule accept aggregation data.
+        This method should check for matches while adding ``payload`` and immediately yield them.
+
+        :param payload: A list of buckets with a key, corresponding to ``query_key``, and the count
+        :return: An iterable of (extra, event) rule match tuples
+        """
+        raise NotImplementedError()
 
     def get_segment_size(self):
         """
@@ -512,7 +536,7 @@ class Rule(object):
         """
         Clears the scroll from elasticsearch to save resources.
 
-        Should be called after :py:meth:`Rule.get_hits` and no longer want to scroll.
+        Should be called after :py:meth:`reactor.rule.Rule.get_hits` and no longer want to scroll.
         """
         if not self._data.scroll_id:
             return
@@ -527,7 +551,7 @@ class Rule(object):
         """
         Query ElasticSearch for the given rule and return the processed results.
 
-        Should call :py:meth:`Rule.clear_scroll` once all hits are retrieved.
+        Should call :py:meth:`reactor.rule.Rule.clear_scroll` once all hits are retrieved.
 
         :raises reactor.exceptions.QueryException
         """
@@ -791,17 +815,30 @@ class Rule(object):
         return extra, event
 
     def get_match_str(self, extra: dict, match: dict) -> str:
+        """
+        Returns a string that gives more context about a match.
+
+        :param match: The matching event, a dictionary of terms.
+        :return: A user facing string describing the match.
+        """
         return ''
 
-    def garbage_collect(self, timestamp: dt.datetime) -> Generator[dict, None, None]:
+    def garbage_collect(self, timestamp: dt.datetime) -> Iterable[tuple]:
+        """
+        Gets called periodically to remove old data that is useless beyond given timestamp. May also be used to compute
+        things in the absence of new data.
+
+        :param timestamp: A timestamp indicating the rule has been run up to that point
+        :return: An iterable of (extra, event) rule match tuples
+        """
         yield from ()
 
 
-class AnyRule(AcceptsHitsDataMixin, Rule):
+class AnyRule(Rule):
     _schema_file = 'schemas/ruletype-any.yaml'
 
     """ A rule that will match on any input data. """
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
         qk = self._conf.get('query_key', None)
         for event in data:
             extra = {'key': hashable(dots_get(event, qk)) if qk else 'all',
@@ -811,7 +848,7 @@ class AnyRule(AcceptsHitsDataMixin, Rule):
             yield self.add_match(extra, event)
 
 
-class CompareRule(AcceptsHitsDataMixin, Rule):
+class CompareRule(Rule):
     """ A base class for matching a specific term by passing it to a compare function. """
 
     def expand_entries(self, list_type: str):
@@ -834,7 +871,7 @@ class CompareRule(AcceptsHitsDataMixin, Rule):
         """ An event is a match if this returns true """
         raise NotImplementedError()
 
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
         for event in data:
             if self.compare(event):
                 yield self.add_match(*self.generate_match(event))
@@ -849,7 +886,7 @@ class BlacklistRule(CompareRule):
     _schema_file = 'schemas/ruletype-blacklist.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(BlacklistRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         self.expand_entries('blacklist')
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
@@ -880,7 +917,7 @@ class WhitelistRule(CompareRule):
     _schema_file = 'schemas/ruletype-whitelist.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(WhitelistRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         self.expand_entries('whitelist')
 
     def prepare(self, es_client: ElasticSearchClient, start_time: str = None) -> None:
@@ -968,13 +1005,13 @@ class ChangeRule(CompareRule):
         return extra, event
 
 
-class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
+class FrequencyRule(Rule):
     """ A Rule that matches if num_events number of events occur within a timeframe. """
 
     _schema_file = 'schemas/ruletype-frequency.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(FrequencyRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         self.attach_related = self._conf['attach_related']
 
     def check_for_match(self, key, end=False):
@@ -1005,7 +1042,7 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
             self._data.occurrences.pop(key)
             yield self.add_match(extra, event)
 
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
         qk = self._conf.get('query_key', None)
         keys = set()
         for event in data:
@@ -1034,7 +1071,7 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
         end_time = pretty_ts(match_ts, lt)
         return 'At least %d events occurred between %s and %s\n\n' % (self._conf['num_events'], start_time, end_time)
 
-    def garbage_collect(self, timestamp: dt.datetime) -> Generator[dict, None, None]:
+    def garbage_collect(self, timestamp: dt.datetime) -> Iterable[tuple]:
         """ Remove all occurrence data that is beyond the timeframe away. """
         stale_keys = []
         for key, window in self._data.occurrences.items():
@@ -1043,7 +1080,7 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
         list(map(self._data.occurrences.pop, stale_keys))
         yield from ()
 
-    def add_count_data(self, counts) -> Generator[dict, None, None]:
+    def add_count_data(self, counts) -> Iterable[tuple]:
         """ Add count data to the rule. Data should be of the form {ts: count}. """
         if len(counts) > 1:
             raise ReactorException('add_count_data can only accept one count at a time')
@@ -1054,7 +1091,7 @@ class FrequencyRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDat
         self._data.occurrences.setdefault('all', event_window).append(event)
         yield from self.check_for_match('all')
 
-    def add_terms_data(self, terms) -> Generator[dict, None, None]:
+    def add_terms_data(self, terms) -> Iterable[tuple]:
         for timestamp, buckets in terms.items():
             for bucket in buckets:
                 event = ({self.ts_field: timestamp,
@@ -1070,7 +1107,7 @@ class FlatlineRule(FrequencyRule):
     _schema_file = 'schemas/ruletype-flatline.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(FlatlineRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         self.threshold = self._conf['threshold']
 
         # Dictionary mapping query keys to the first event observed
@@ -1137,7 +1174,7 @@ class FlatlineRule(FrequencyRule):
         )
         return message
 
-    def garbage_collect(self, timestamp: dt.datetime) -> Generator[dict, None, None]:
+    def garbage_collect(self, timestamp: dt.datetime) -> Iterable[tuple]:
         # We add an event with a count of zero to the EventWindow for each key. This will cause the EventWindow
         # to remove events that occurred more than one timeframe ago, and call on_remove on them.
         default = ['all'] if 'query_key' not in self._conf else []
@@ -1148,13 +1185,13 @@ class FlatlineRule(FrequencyRule):
             yield from self.check_for_match(key, end=True)
 
 
-class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMixin, Rule):
+class SpikeRule(Rule):
     """ A Rule that uses two sliding windows to compare relative event frequency. """
 
     _schema_file = 'schemas/ruletype-spike.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(SpikeRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         self.timeframe = self._conf['timeframe']
 
         self.ref_windows = {}
@@ -1231,7 +1268,7 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
         return (spike_up and self._conf['spike_type'] in ['both', 'up']) or \
                (spike_dn and self._conf['spike_type'] in ['both', 'down'])
 
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
         qk = self._conf.get('query_key', None)
         for event in data:
             # If no query_key, we use the key 'all' for all events
@@ -1283,7 +1320,7 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
                                                                                                              timeframe)
         return message
 
-    def garbage_collect(self, timestamp: dt.datetime) -> Generator[dict, None, None]:
+    def garbage_collect(self, timestamp: dt.datetime) -> Iterable[tuple]:
         # Windows are sized according to their newest event
         # This is a placeholder to accurately size windows in the absence of events
         for qk in self.cur_windows.keys():
@@ -1297,14 +1334,14 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
                 dots_set(placeholder, self._conf['query_key'], qk)
             yield from self.handle_event(placeholder, 0, qk)
 
-    def add_count_data(self, counts) -> Generator[dict, None, None]:
+    def add_count_data(self, counts) -> Iterable[tuple]:
         """ Add count data to the rule. Data should be of the form {ts: count}. """
         if len(counts) > 1:
             raise ReactorException('SpikeRule.add_count_data can only accept one count at a time')
         for ts, count in counts.items():
             yield from self.handle_event({self.ts_field: ts}, count, 'all')
 
-    def add_terms_data(self, terms) -> Generator[dict, None, None]:
+    def add_terms_data(self, terms) -> Iterable[tuple]:
         for timestamp, buckets in terms.items():
             for bucket in buckets:
                 count = bucket['doc_count']
@@ -1314,14 +1351,14 @@ class SpikeRule(AcceptsTermsDataMixin, AcceptsCountDataMixin, AcceptsHitsDataMix
                 yield from self.handle_event(event, count, key)
 
 
-class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
+class NewTermRule(Rule):
     _schema_file = 'schemas/ruletype-new_term.yaml'
 
     """ A Rule that detects a new value in a list of fields. """
     # TODO: alter self.seen_values to be a mapping of value to timestamp of last seen - add option to forget old terms
     #  outside timeframe
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(NewTermRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         self.seen_values = {}
         # Allow the use of query_key or fields
         if 'fields' not in self._conf and 'query_key' not in self._conf:
@@ -1526,7 +1563,7 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
                     results.add(hierarchy_tuple + (node['key'],))
         return results
 
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
         for event in data:
             for field in self.fields:
                 value = ()
@@ -1566,7 +1603,7 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
             self.seen_values[field].add(value)
         return extra, event
 
-    def add_terms_data(self, terms) -> Generator[dict, None, None]:
+    def add_terms_data(self, terms) -> Iterable[tuple]:
         field = self.fields[0]
         for timestamp, buckets in terms.items():
             for bucket in buckets:
@@ -1575,13 +1612,13 @@ class NewTermRule(AcceptsTermsDataMixin, AcceptsHitsDataMixin, Rule):
                         yield self.add_match(*self.generate_match(field, bucket['key'], timestamp=timestamp))
 
 
-class CardinalityRule(AcceptsHitsDataMixin, Rule):
+class CardinalityRule(Rule):
     """ A Rule that matches if cardinality of a field is above or below a threshold within a timeframe. """
 
     _schema_file = 'schemas/ruletype-cardinality.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(CardinalityRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         if 'max_cardinality' not in self._conf and 'min_cardinality' not in self._conf:
             raise ConfigException('CardinalityRule must have one of either max_cardinality or min_cardinality')
         self.cardinality_field = self._conf['cardinality_field']
@@ -1589,7 +1626,7 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
         self.first_event = {}
         self.timeframe = self._conf['timeframe']
 
-    def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+    def add_hits_data(self, data: list) -> Iterable[tuple]:
         qk = self._conf.get('query_key', None)
         for event in data:
             # If no query_key, we use the key 'all' for all events
@@ -1638,7 +1675,7 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
                 began_time,
                 ended_time)
 
-    def garbage_collect(self, timestamp: dt.datetime) -> Generator[dict, None, None]:
+    def garbage_collect(self, timestamp: dt.datetime) -> Iterable[tuple]:
         """ Remove all occurrence data that is beyond the timeframe away. """
         stale_terms = []
         for qk, terms in self.cardinality_cache.items():
@@ -1657,11 +1694,11 @@ class CardinalityRule(AcceptsHitsDataMixin, Rule):
                 yield from self.check_for_match(qk, event, False)
 
 
-class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
+class BaseAggregationRule(Rule):
     allowed_aggregations = frozenset(['min', 'max', 'avg', 'sum', 'cardinality', 'value_count'])
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(BaseAggregationRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         bucket_interval = self._conf.get('bucket_interval')
         if bucket_interval:
             seconds = total_seconds(bucket_interval)
@@ -1688,7 +1725,7 @@ class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
     def generate_aggregation_query(self):
         raise NotImplementedError()
 
-    def add_aggregation_data(self, payload) -> Generator[dict, None, None]:
+    def add_aggregation_data(self, payload) -> Iterable[tuple]:
         for timestamp, payload_data in payload.items():
             if 'interval_aggs' in payload_data:
                 yield from self.unwrap_interval_buckets(timestamp, None, payload_data['interval_aggs']['buckets'])
@@ -1710,7 +1747,7 @@ class BaseAggregationRule(AcceptsAggregationDataMixin, Rule):
             else:
                 yield from self.check_for_matches(timestamp, term_data['key'], term_data)
 
-    def check_for_matches(self, timestamp, query_key, aggregation_data) -> Generator[dict, None, None]:
+    def check_for_matches(self, timestamp, query_key, aggregation_data) -> Iterable[tuple]:
         raise NotImplementedError()
 
 
@@ -1720,7 +1757,7 @@ class MetricAggregationRule(BaseAggregationRule):
     _schema_file = 'schemas/ruletype-metric_aggregation.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(MetricAggregationRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         if 'max_threshold' not in self._conf and 'min_threshold' not in self._conf:
             raise ConfigException('MetricAggregationRule must have one of either max_threshold or min_threshold')
         if self._conf['metric_agg_type'] not in self.allowed_aggregations:
@@ -1797,7 +1834,7 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
     _schema_file = 'schemas/ruletype-spike_metric_aggregation.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(SpikeMetricAggregationRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
 
         # Metric aggregation alert things
         self.metric_key = 'metric_%s_%s' % (self._conf['metric_agg_key'], self._conf['metric_agg_type'])
@@ -1817,7 +1854,7 @@ class SpikeMetricAggregationRule(SpikeRule, BaseAggregationRule):
         else:
             return {self.metric_key: {self._conf['metric_agg_type']: {'field': self._conf['metric_agg_key']}}}
 
-    def add_aggregation_data(self, payload) -> Generator[dict, None, None]:
+    def add_aggregation_data(self, payload) -> Iterable[tuple]:
         """
         BaseAggregationRule.add_aggregation_data unpacks our results and runs checks directly against hardcoded
         cutoffs.
@@ -1875,7 +1912,7 @@ class PercentageMatchRule(BaseAggregationRule):
     _schema_file = 'schemas/ruletype-percentage_match.yaml'
 
     def __init__(self, locator: str, hash_str: str, conf: dict):
-        super(PercentageMatchRule, self).__init__(locator, hash_str, conf)
+        super().__init__(locator, hash_str, conf)
         if all([f not in self._conf for f in ['max_percentage', 'min_percentage']]):
             raise ConfigException('PercentageMatchRule must have one of either min_percentage or max_percentage')
 

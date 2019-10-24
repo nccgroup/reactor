@@ -20,7 +20,7 @@ class DateTimeEncoder(json.JSONEncoder):
         if hasattr(o, 'isoformat'):
             return o.isoformat()
         else:
-            return super(DateTimeEncoder, self).default(o)
+            return super().default(o)
 
 
 def _ensure_new_line(text: str):
@@ -151,6 +151,13 @@ class BasicMatchString(object):
 
 
 class Alerter(object):
+    """
+    The base class for all alerters used by Reactor. Custom Alerters provide a way for users to fire alerts when rule
+    matches are discovered.
+
+    :param rule: Rule for the alerter
+    :param conf: Configuration for the alerter
+    """
 
     _schema_file = None
     _schema_relative = __file__
@@ -171,6 +178,7 @@ class Alerter(object):
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
         """
         Send an alert. alert_body a copy of the alert_body that will be stored in ElasticSearch.
+
         :param alerts: A list of alerts to be sent
         :param silenced: True if the alerts are silenced
         :param publish: True if alerter should perform this in debug mode
@@ -178,9 +186,11 @@ class Alerter(object):
         """
         raise NotImplementedError()
 
-    def get_info(self):
-        """ Returns a dictionary of data related to this alert. At minimum, this should contain
-        a field type corresponding to the type of Alerter. """
+    def get_info(self) -> dict:
+        """
+        Returns a dictionary of data related to this alert. At minimum, this should contain a field type corresponding
+        to the type of Alerter.
+        """
         return {'type': 'Unknown'}
 
     def create_alert_title(self, alerts):
@@ -257,7 +267,7 @@ class Alerter(object):
         """ Gets the username and password from an account file.
 
         :param account_file: Path to the file which contains user and password information.
-        It can be either an absolute file path or one that is relative to the given rule.
+                It can be either an absolute file path or one that is relative to the given rule.
         """
         if os.path.isabs(account_file):
             account_file_path = account_file
@@ -276,7 +286,7 @@ class DebugAlerter(Alerter):
     _schema_file = 'schemas/alerter-debug.yaml'
 
     def __init__(self, *args):
-        super(DebugAlerter, self).__init__(*args)
+        super().__init__(*args)
 
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
         if silenced:
@@ -307,7 +317,7 @@ class TestAlerter(Alerter):
     mode = 'w'
 
     def __init__(self, *args):
-        super(TestAlerter, self).__init__(*args)
+        super().__init__(*args)
         self.alerts = []
 
     def alert(self, alerts: list, silenced: bool = False, publish: bool = True):
@@ -346,7 +356,7 @@ class EmailAlerter(Alerter):
     _schema_file = 'schemas/alerter-email.yaml'
 
     def __init__(self, *args):
-        super(EmailAlerter, self).__init__(*args)
+        super().__init__(*args)
 
         self.smtp_host = self.conf.get('smtp_host', 'localhost')
         self.smtp_port = self.conf.get('smtp_port', 0)
@@ -439,7 +449,7 @@ class WebhookAlerter(Alerter):
     _schema_file = 'schemas/alerter-webhook.yaml'
 
     def __init__(self, *args):
-        super(WebhookAlerter, self).__init__(*args)
+        super().__init__(*args)
         urls = self.conf.get('url')
         if isinstance(urls, str):
             urls = [urls]
@@ -485,7 +495,7 @@ class CommandAlerter(Alerter):
     _schema_file = 'schemas/alerter-command.yaml'
 
     def __init__(self, *args):
-        super(CommandAlerter, self).__init__(*args)
+        super().__init__(*args)
 
         self.last_command = []
         self.shell = False

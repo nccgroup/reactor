@@ -31,15 +31,19 @@ def _validator(schema_file: str):
 
 
 class RuleLoader(object):
+    """
+    The base class for all rule loaders used by Reactor. Custom RuleLoaders allow Reactor to retrieve rules from
+    different data stores other than the local filesystem.
+
+    :param conf: Configuration for the loader
+    :param rule_defaults: Default values for every rule
+    :param mappings: Lookup dictionary of alerters and ruletype classes
+    """
+
     rule_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/ruletype.yaml', __file__)
     conf_schema = None
 
     def __init__(self, conf: dict, rule_defaults: dict, mappings: dict):
-        """
-        :param conf: Configuration for the loader
-        :param rule_defaults: Default values for every rule
-        :param mappings: Lookup dictionary of alerters and ruletype classes
-        """
         self.conf = conf
         self.rule_defaults = rule_defaults
         self.mappings = mappings
@@ -129,11 +133,20 @@ class RuleLoader(object):
         return list(self.rules.keys())
 
     def discover(self, use_rules: list = None) -> List[str]:
-        """ Discover all rules and return a list of rule locators. """
+        """
+        Discover all rules and return a list of rule locators. If ``use_rules`` is provided, limit the discovery to
+        those rules.
+
+        :param use_rules: A list of rule locators to limit discovery by
+        """
         raise NotImplementedError()
 
     def get_hash(self, locator: str) -> str:
-        """ Given a rule locator return the hash. Used to detect configuration changes. """
+        """
+        Given a rule locator return the hash. Used to detect configuration changes.
+
+        :param locator: Rule locator
+        """
         raise NotImplementedError()
 
     def load_configuration(self, locator: str) -> Rule:
@@ -184,7 +197,11 @@ class RuleLoader(object):
         return rule
 
     def get_yaml(self, locator: str) -> dict:
-        """ Get and parse the YAML of the specified rule. """
+        """
+        Get and parse the YAML of the specified rule.
+
+        :param locator: Rule locator
+        """
         raise NotImplementedError()
 
     def resolve_import(self, rule: dict) -> Optional[str]:
@@ -367,7 +384,7 @@ class FileRuleLoader(RuleLoader):
 
     def resolve_import(self, rule: dict) -> Optional[str]:
         """ Allow for paths relative to the rule. """
-        import_id = super(FileRuleLoader, self).resolve_import(rule)
+        import_id = super().resolve_import(rule)
         if import_id is None:
             return None
         elif os.path.isabs(import_id):

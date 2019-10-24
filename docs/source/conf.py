@@ -19,7 +19,7 @@ import sphinx_rtd_theme
 # -- General configuration -----------------------------------------------------
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = []
+extensions = ['sphinx.ext.autodoc']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -81,7 +81,19 @@ exclude_trees = []
 pygments_style = 'sphinx'
 
 # A list of ignored prefixes for module index sorting.
-# modindex_common_prefix = []
+modindex_common_prefix = ['reactor.']
+
+
+# -- Options for Autodoc -------------------------------------------------------
+
+# This value selects if automatically documented members are sorted alphabetical
+# (value 'alphabetical'), by member type (value 'groupwise') or by source order
+# (value 'bysource'). The default is alphabetical.
+# autodoc_member_order = 'bysource'
+
+# This value controls the docstrings inheritance. If set to True the docstring
+# for classes or methods, if not explicitly set, is inherited form parents.
+# autodoc_inherit_docstrings = True
 
 
 # -- Options for HTML output ---------------------------------------------------
@@ -140,11 +152,8 @@ html_static_path = ['_static']
 # template names.
 # html_additional_pages = {}
 
-# If false, no module index is generated.
-# html_use_modindex = True
-
 # If false, no index is generated.
-# html_use_index = True
+html_use_index = True
 
 # If true, the index is split into individual pages for each letter.
 # html_split_index = False

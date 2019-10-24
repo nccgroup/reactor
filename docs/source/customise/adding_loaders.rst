@@ -4,10 +4,10 @@ Adding a new Loader
 ========================
 
 This document describes how to create a new rule loader. Built in loaders live in ``reactor/loader.py`` and are
-subclasses of :py:class:`RuleLoader`. At a minimum, your loader needs to implement ``discover``, ``get_hash``, and
+subclasses of :py:class:`reactor.loader.RuleLoader`. At a minimum, your loader needs to implement ``discover``, ``get_hash``, and
 ``get_yaml``.
 
-You class may implement several functions from :py:class:`RuleLoader`:
+You class may implement several functions from :py:class:`reactor.loader.RuleLoader`:
 
 .. code-block:: python
 
@@ -24,28 +24,31 @@ You class may implement several functions from :py:class:`RuleLoader`:
 
 You can import loaders by specifying the type as ``module.file.RuleLoaderName``, where module is the name of a
 python module or folder containing ``__init__.py``, and file is the name of the python file containing a
-:py:class:`RuleLoader` subclass named ``RuleLoaderName``.
+:py:class:`reactor.loader.RuleLoader` subclass named ``RuleLoaderName``.
 
 Basics
 ------
 
-The :py:class:`RuleLoader` instance remains in memory while Reactor is running, is frequently called to check for updates
+The :py:class:`reactor.loader.RuleLoader` instance remains in memory while Reactor is running, is frequently called to check for updates
 (unless the ``--pin_rules`` to the ``reactor run`` command), and loads/validates all the rules that Reactor will execute.
 The three functions that must be implemented are:
 
-.. py:method:: RuleLoader.self.discover(self, use_rules\: list = None) -> List[str]
+.. py:method:: reactor.loader.RuleLoader.self.discover(self, use_rules\: list = None) -> List[str]
+    :noindex:
 
     This function should discover all rules and return a list of locators that can be passed into ``get_hash`` and
     ``get_yaml``. If ``use_rules`` is supplied then the result of should be limited to the union of the set of rule
     locators discovered and the rule locators in ``use_rules``.
 
-.. py:method:: RuleLoader.self.get_hash(self, locator\: str) -> str
+.. py:method:: reactor.loader.RuleLoader.self.get_hash(self, locator\: str) -> str
+    :noindex:
 
     This function should return a uniquely identifying hash for the rule locator. The value of this hash must change if
     the rule configuration has been altered in any way and remain the same if not. Reactor uses the returned value to
     determine whether the rule should be reloaded.
 
-.. py:method:: RuleLoader.self.get_yaml(self, locator\: str) -> dict
+.. py:method:: reactor.loader.RuleLoader.self.get_yaml(self, locator\: str) -> dict
+    :noindex:
 
     This function should retrieve and parse the YAML of the specified rule. Technically, the store for a custom rule
     loader does not need to be in a YAML format only that this function returns a dictionary that Reactor can use.
@@ -69,7 +72,7 @@ filesystem. First, create a file in the `reactor_modules` folder created in the 
     class MongoDbRuleLoader(RuleLoader):
 
         def __init__(self, conf: dict, rule_defaults: dict, mappings: dict):
-            super(MongoDbRuleLoader, self).__init__(conf, rule_defaults, mappings)
+            super().__init__(conf, rule_defaults, mappings)
             # Pass the MongoClient the keywords it needs
             self._client = MongoClient(**conf['client'])
             # Connect to the database

@@ -4,7 +4,7 @@ Adding a new Plugin
 ===================
 
 This document describes how to create a new plugin. Built in plugins live in ``reactor/plugin.py`` and are a subclass
-of :py:class:`BasePlugin`. At a minimum, your plugin needs to implement the ``start`` and ``shutdown`` functions.
+of :py:class:`reactor.plugin.BasePlugin`. At a minimum, your plugin needs to implement the ``start`` and ``shutdown`` functions.
 Plugins are instantiated with a Reactor object and their configuration dictionary object.
 
 Plugins are modules which let you add functionality that runs alongside Reactor. They can be added to Reactor using the
@@ -16,7 +16,7 @@ Plugins are modules which let you add functionality that runs alongside Reactor.
       module.file.MyPlugin: {}
 
 where module is the name of a Python module, or folder containing ``__init__.py``,
-and file is the name of the Python file containing a :py:class:`BasePlugin` subclass named ``MyPlugin``.
+and file is the name of the Python file containing a :py:class:`reactor.plugin.BasePlugin` subclass named ``MyPlugin``.
 
 A human-readable version the plugin can be added by using the ``mappings.plugin`` option:
 
@@ -32,13 +32,15 @@ A human-readable version the plugin can be added by using the ``mappings.plugin`
       my_plugin: {}
 
 
-.. py:method:: BasePlugin.start(self)
+.. py:method:: reactor.plugin.BasePlugin.start(self)
+    :noindex:
 
     This is called before Reactor is started and start the plugin. If the plugin starts a process, thread, or executes a
     long running shell command then the plugin should store the reference to that so that it may be terminated when shutdown
     is called.
 
-.. py:method:: BasePlugin.shutdown(self, timeout: int = None)
+.. py:method:: reactor.plugin.BasePlugin.shutdown(self, timeout: int = None)
+    :noindex:
 
     This function shuts down the plugin, any process, thread, or running shell command that the plugin started should be
     stopped and cleaned up. If ``timeout`` is provided then the plugin should wait up to that number of seconds for the
@@ -64,7 +66,7 @@ a command and timeframe. First, create a file in the ``reactor_modules`` folder 
     class PeriodicCommandPlugin(BasePlugin):
 
         def __init__(self, *args, **kwargs):
-            super(PeriodicCommandPlugin, self).__init__(*args, **kwargs)
+            super().__init__(*args, **kwargs)
 
             self._running = None
             self._thread = None

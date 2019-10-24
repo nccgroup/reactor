@@ -4,9 +4,9 @@ Adding a new Alerter
 ====================
 
 This document describes how to create a new alerter. Build in alerters live in ``reactor/alerter.py`` are are subclasses
-of :py:class:`Alerter`. At a minimum, your alerter needs to implement two member functions and set the class variable.
+of :py:class:`reactor.alerter.Alerter`. At a minimum, your alerter needs to implement two member functions and set the class variable.
 
-Your class may implement several functions from :py:class:`Alerter`:
+Your class may implement several functions from :py:class:`reactor.alerter.Alerter`:
 
 .. code-block:: python
 
@@ -21,7 +21,7 @@ Your class may implement several functions from :py:class:`Alerter`:
             # ...
 
 You can import alerters by specifying the type as ``module.file.AlerterName``, where module is the name of a Python
-module, or folder containing ``__init__.py``, and file is the name of the Python file containing an :py:class:`Alerter`
+module, or folder containing ``__init__.py``, and file is the name of the Python file containing an :py:class:`reactor.alerter.Alerter`
 subclass named ``AlerterName``.
 
 Basics
@@ -31,35 +31,41 @@ The alerter class will be instantiated when Reactor starts, and be periodically 
 method. Reactor also writes back info about the alert into Elasticsearch that it obtains through ``get_info``. Several
 important member properties:
 
-.. py:attribute:: Alerter._schema_file
+.. py:attribute:: reactor.alerter.Alerter._schema_file
+    :noindex:
 
     The relative path from ``cls._schema_relative`` (defaults to ``reactor.alerter.py``) to the configuration schema
     file. The file should be in a ``.yaml`` format and should describe all options required and optional for using the
     Rule using the `JSON Schema Draft 7 specification <https://json-schema.org/specification-links.html#draft-7>`_.
     Reactor will validate all alerter configurations that specify this alerter *before* instantiation.
 
-.. py:attribute:: Alerter._schema_relative
+.. py:attribute:: reactor.alerter.Alerter._schema_relative
+    :noindex:
 
     The absolute path that ``cls._schema_file`` is relative to (defaults to ``reactor.rule.py``).
 
 
-.. py:attribute:: Alerter.rule
+.. py:attribute:: reactor.alerter.Alerter.rule
+    :noindex:
 
-    The :py:class:`Rule` object that this alerter is attached to. All options specific to that rule can be retrieved
-    using the :py:meth:`rule.conf` function.
+    The :py:class:`reactor.rule.Rule` object that this alerter is attached to. All options specific to that rule can be retrieved
+    using the :py:meth:`reactor.rule.Rule.conf` function.
 
-.. py:attribute:: Alerter.conf
+.. py:attribute:: reactor.alerter.Alerter.conf
+    :noindex:
 
     The dictionary containing the alerter configuration. All options specific to the alerter will be found in here.
 
-.. py:attribute:: Alerter.pipeline
+.. py:attribute:: reactor.alerter.Alerter.pipeline
+    :noindex:
 
     This is a dictionary object that serves to transfer information between alerts. When an alert is triggered, a new
     empty pipeline object will be created and each alerter can add or receive information from it. Note that alerters
     are called in the order they are defined in the rule file. For example, a custom alerter added a ticket number
     to the pipeline and the email alerter will add that link if it's present in the pipeline.
 
-.. py:method:: Alerter.alert(self, alerts: list, silenced: bool = False, publish: bool = True)
+.. py:method:: reactor.alerter.Alerter.alert(self, alerts: list, silenced: bool = False, publish: bool = True)
+    :noindex:
 
     Reactor will call this function to send an alert. ``alerts`` is a list of dictionary objects with the body that will be
     sent and stored in Elasticsearch. You can get a nice string representation of the match by calling
@@ -72,7 +78,8 @@ important member properties:
     ``publish`` is a boolean flag to inform the alerter as to whether Reactor is default or debug mode. If the ``publish``
     is ``False`` then your alerter should not publish the alert but either ignore the alert or output a debug statement.
 
-.. py:method:: Alerter.get_info(self)
+.. py:method:: reactor.alerter.Alerter.get_info(self)
+    :noindex:
 
     This function is called to get information about the alert to save back to Elasticsearch. It should return a dictionary,
     which is uploaded directly to Elasticsearch, and should contain useful information about the alert such as the type,

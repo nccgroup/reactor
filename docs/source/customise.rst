@@ -31,31 +31,3 @@ For all of these guides you will need to create a modules folder in the base Rea
     $ mkdir my_modules
     $ cd my_modules
     $ touch __init__.py
-
-
-Base Classes
-^^^^^^^^^^^^
-
-.. py:class:: Rule
-
-    The base class for all rules used by Reactor.
-
-.. py:class:: RuleLoader
-
-    The base class for all rule loaders used by Reactor.
-
-.. py:class:: Alerter
-
-    The base class for all alerters used by Reactor.
-
-.. py:class:: BaseEnhancement
-
-    The base class for all enhancements used by Reactor.
-
-.. py:class:: BasePlugin
-
-    The base class for all plugins used by Reactor.
-
-.. py:class:: BaseNotifier
-
-    The base class for all notifiers used by Reactor.

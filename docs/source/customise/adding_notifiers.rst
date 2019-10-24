@@ -4,7 +4,7 @@ Adding a new Notifier
 =====================
 
 This document describes how to create a new notifier. Built in notifiers live in ``reactor/notifier.py`` and are a
-subclass of :py:class:`BaseNotifier`. At a minimum, your notifier needs to implement the ``notify`` function. Notifiers
+subclass of :py:class:`reactor.notifier.BaseNotifier`. At a minimum, your notifier needs to implement the ``notify`` function. Notifiers
 are instantiated with their configuration dictionary object.
 
 Notifiers are modules which let you perform a specified action when a Reactor notification is triggered. They can be
@@ -16,7 +16,7 @@ added to Reactor using the ``notifiers`` option:
       module.file.MyNotifier: {}
 
 where module is the name of a Python module, or folder containing ``__init__.py``,
-and file is the name of the Python file containing a :py:class:`BaseNotifier` subclass named ``MyNotifier``.
+and file is the name of the Python file containing a :py:class:`reactor.notifier.BaseNotifier` subclass named ``MyNotifier``.
 
 A human-readable version the notifier can be added by using the ``mappings.notifier`` option:
 
@@ -31,7 +31,8 @@ A human-readable version the notifier can be added by using the ``mappings.notif
     notifiers:
       my_notifier: {}
 
-.. py:method:: BaseNotifier.notify(self, subject: str, body: str)
+.. py:method:: reactor.notifier.BaseNotifier.notify(self, subject: str, body: str)
+    :noindex:
 
     This function is called by Reactor when an uncaught exception is raised. ``subject`` is the subject of the notification
     and ``body`` is the message. The notifier should fire the notification whenever this function is called.
@@ -55,7 +56,7 @@ First, create a file in the ``reactor_modules`` folder created in the :ref:`cust
     class CommandNotifier(BaseNotifier):
 
         def __init__(self, *args, **kwargs):
-            super(CommandNotifier, self).__init__(*args, **kwargs)
+            super().__init__(*args, **kwargs)
 
             self._command = self.conf['command']
 

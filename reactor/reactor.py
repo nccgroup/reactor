@@ -19,8 +19,8 @@ import apscheduler.triggers.interval
 import croniter
 import elasticsearch.helpers
 import pytz
+import reactor.cluster
 import reactor.kibana
-import reactor.raft
 import reactor.rule
 from apscheduler.executors.pool import ProcessPoolExecutor as _ProcessPoolExecutor
 from elasticsearch import Elasticsearch
@@ -36,7 +36,17 @@ from reactor.util import (
 
 
 class Reactor(object):
+    """
+    The main Reactor runner. This class holds all state about the global configuration and runtime arguments, the rule
+    loader, controls when when rules are run, when rule configurations are updated, when (pending) alerts are sent, and
+    the cluster.
+
+    :param conf: The global configuration dictionary.
+    :param args: A dictionary of runtime arguments
+    """
+
     MAX_TERMINATE_CALLED = 3
+    """ The maximum number of times :py:meth:`Rule.terminate` can be called before shutdown is forced. """
 
     def __init__(self, conf: dict, args: dict):
         self.mode = args.get('mode', 'default')
@@ -59,21 +69,21 @@ class Reactor(object):
         self.max_processpool = max(1, min(multiprocessing.cpu_count(), self.conf['max_processpool'] or float('inf')))
 
         self.core = Core(conf, args)
-        self.raft = None
 
         # Establish a default setting for the cluster
-        self.conf.setdefault('cluster', {'host': 'localhost:7000', 'neighbours': []})
-        self.raft = reactor.raft.RaftNode(tuple(self.conf['cluster']['host'].split(":")),
-                                          [tuple(n.split(":")) for n in self.conf['cluster']['neighbours']])
-        self.raft.meta['cpu_count'] = self.max_processpool
-        self.raft.meta['executing'] = set()
-        self.cluster = {'leader': None,
-                        'rules': []}
+        if not self.conf.get('cluster'):
+            self.cluster = reactor.cluster.Node('localhost')
+        else:
+            self.cluster = reactor.cluster.RaftNode(self.conf['cluster']['host'], self.conf['cluster']['neighbours'])
+        self.cluster.meta['cpu_count'] = self.max_processpool
+        self.cluster.meta['executing'] = set()
+        self.cluster_info = {'leader': None,
+                             'rules': []}
 
         self._configure_schedule()
 
     @property
-    def running(self):
+    def running(self) -> bool:
         """ Returns whether Reactor core has been started and not shutdown. """
         return self.scheduler.running
 
@@ -130,8 +140,8 @@ class Reactor(object):
                                 rule.data.alerts_sent,
                                 rule.data.alerts_silenced)
 
-    def start(self):
-        """ Periodically update rules and schedule to run. """
+    def start(self) -> int:
+        """ Starts Reactor and begin alerting. """
         if self.running:
             raise ReactorException('Reactor already running')
 
@@ -144,10 +154,10 @@ class Reactor(object):
 
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         reactor_logger.info('Starting up (max_processpool=%s cluster_size=%s)',
-                            self.max_processpool,  1 + len(self.raft.neighbours))
+                            self.max_processpool, 1 + len(self.cluster.neighbours))
 
         # Start the RAFT cluster
-        self.raft.start()
+        self.cluster.start()
 
         # Add internal jobs to the scheduler
         self.scheduler.add_job(self.handle_pending_alerts, 'interval',
@@ -183,8 +193,13 @@ class Reactor(object):
         else:
             self.terminate(signal_num)
 
-    def terminate(self, signal_num):
-        """ Try safe ``stop`` for up to ``self.MAX_TERMINATE_CALLED`` times. """
+    def terminate(self, signal_num: int) -> None:
+        """
+        Attempt to safely stop Reactor by calling :py:meth:`Reactor.stop` for up to :py:attr:`self.MAX_TERMINATE_CALLED`
+        times. If limit is reach, attempt to force shutdown.
+
+        :param signal_num: The signal number to be used as the forced exit status
+        """
         self.terminate_called += 1
 
         if self.terminate_called >= self.MAX_TERMINATE_CALLED:
@@ -199,17 +214,17 @@ class Reactor(object):
             reactor_logger.info('Attempting normal shutdown')
             self.stop()
 
-    def stop(self):
+    def stop(self) -> None:
         """ Stop a running Reactor. """
         if self.running:
 
             reactor_logger.info('Waiting for raft to shutdown')
-            self.raft.shutdown()
+            self.cluster.shutdown()
 
             reactor_logger.info('Removing jobs from scheduler')
             self.scheduler.remove_all_jobs()
 
-            reactor_logger.info('Waiting for running jobs to complete (%s)' % len(self.raft.meta['executing']))
+            reactor_logger.info('Waiting for running jobs to complete (%s)' % len(self.cluster.meta['executing']))
             self.scheduler.shutdown()
 
             reactor_logger.info('Shutdown complete!')
@@ -217,7 +232,7 @@ class Reactor(object):
     def info(self):
         """ Print number of rules sent to the executor. """
         if self.core_pid == multiprocessing.current_process().pid:
-            print('Rules executing or waiting to execute: %s' % len(self.raft.meta['executing']))
+            print('Rules executing or waiting to execute: %s' % len(self.cluster.meta['executing']))
 
     def wait_until_responsive(self, timeout: datetime.timedelta):
         """ Wait until ElasticSearch becomes responsive (or too much time passes). """
@@ -266,25 +281,25 @@ class Reactor(object):
             reactor_logger.error(str(e))
         else:
             # If the leadership of the cluster has changed
-            if self.raft.leader != self.cluster['leader']:
-                self.cluster['leader'] = self.raft.leader
-                if not self.raft.has_leader():
+            if self.cluster.leader != self.cluster_info['leader']:
+                self.cluster_info['leader'] = self.cluster.leader
+                if not self.cluster.has_leader():
                     reactor_logger.critical('No cluster leader!')
                 else:
-                    reactor_logger.info('Cluster leader elected: %s', self.raft.leader)
+                    reactor_logger.info('Cluster leader elected: %s', self.cluster.leader)
 
             # If we are the leader
-            if self.raft.is_leader():
+            if self.cluster.is_leader():
                 self._distribute_workload()
 
             # Get our list of rules
             distributed_rules = []
-            if self.raft.has_leader():
-                meta = self.raft.neighbourhood_meta()[self.raft.leader]
-                distributed_rules = meta.get('rules', {}).get(self.raft.address, [])
-            if self.cluster['rules'] != distributed_rules:
+            if self.cluster.has_leader():
+                meta = self.cluster.leader_meta()
+                distributed_rules = meta.get('rules', {}).get(self.cluster.address, [])
+            if self.cluster_info['rules'] != distributed_rules:
                 reactor_logger.info('Rule set updated: %s', distributed_rules)
-            self.cluster['rules'] = distributed_rules
+            self.cluster_info['rules'] = distributed_rules
 
             # Remove removed rules from the scheduler
             for job in self.scheduler.get_jobs('default'):
@@ -335,10 +350,10 @@ class Reactor(object):
                                        ('node3', 7000): ['rule_locator4']}
         """
         # If all nodes in the cluster have reported in their cpu_count (they do this every message)
-        if all(['cpu_count' in n.meta for n in self.raft.neighbours.values()]):
+        if all(['cpu_count' in n.meta for n in self.cluster.neighbours.values()]):
             # Determine worker pool
-            workers = [self.raft.address] * self.raft.meta['cpu_count']
-            for neighbour in self.raft.neighbours.values():
+            workers = [self.cluster.address] * self.cluster.meta['cpu_count']
+            for neighbour in self.cluster.neighbours.values():
                 workers.extend([neighbour.address] * neighbour.meta['cpu_count'])
             worker_pool = itertools.cycle(sorted(workers))
             # Distribute the rules across the cluster
@@ -348,7 +363,7 @@ class Reactor(object):
                 distribution.setdefault(node, [])
                 distribution[node].append(rule.locator)
             # Round robin rules that are assigned to disconnected workers
-            unavailable = [n.address for n in self.raft.neighbours.values() if n.failed_count > 0]
+            unavailable = [n.address for n in self.cluster.neighbours.values() if n.failed_count > 0]
             for neighbour in unavailable:
                 while len(distribution[neighbour]):
                     rule = distribution[neighbour].pop()
@@ -356,20 +371,26 @@ class Reactor(object):
                     while node in unavailable:
                         node = next(worker_pool)
                     distribution[node].append(rule)
-            available = [n.address for n in self.raft.neighbours.values() if n.failed_count == 0]
+            available = [n.address for n in self.cluster.neighbours.values() if n.failed_count == 0]
             # Remove any that are being run by another node other than they are assigned
             for neighbour in available:
-                for rule_locator in self.raft.neighbours[neighbour].meta['executing']:
+                for rule_locator in self.cluster.neighbours[neighbour].meta['executing']:
                     for node in distribution:
                         if node != neighbour and rule_locator in distribution[node]:
                             distribution[node].remove(rule_locator)
 
-            self.raft.meta['rules'] = distribution
+            self.cluster.meta['rules'] = distribution
 
-    def silence(self, rule: Rule, duration: datetime.timedelta, revoke: bool = False):
-        """ Silence an alert for a period of time. --silence and --rule must be passed as args. """
+    def silence(self, rule: Rule, duration: datetime.timedelta) -> None:
+        """
+        Silence an alert for a period of time. --silence and --rule must be passed as args.
+
+        :param rule: Rule to be silenced
+        :param duration: Amount of time the rule should be silenced
+        """
 
         # TODO: implement revoking silences (making sure to inform all running reactors of the change)
+        # TODO: implement way of specifying the query keys (key for flatline) to limit silence
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         if self.core.set_realert(rule, '_silence', dt_now() + duration, 0):
             reactor_logger.warning('Silenced rule %s for %s', rule.name, duration)
@@ -390,7 +411,7 @@ class Reactor(object):
 
         # If the rule was submitted to the executor to be run, add the rule to the list of executing rules
         if event.code == apscheduler.events.EVENT_JOB_SUBMITTED:
-            self.raft.meta['executing'].add(event.job_id)
+            self.cluster.meta['executing'].add(event.job_id)
             return
 
         # If there was an uncaught exception raised
@@ -402,8 +423,8 @@ class Reactor(object):
             rule.data = event.retval
 
         # Remove the rule from the list of executing rules
-        if event.job_id in self.raft.meta['executing']:
-            self.raft.meta['executing'].remove(event.job_id)
+        if event.job_id in self.cluster.meta['executing']:
+            self.cluster.meta['executing'].remove(event.job_id)
 
         # Apply rules based on execution time limits
         self.reset_rule_schedule(rule)
