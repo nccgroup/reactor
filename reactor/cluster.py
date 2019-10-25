@@ -56,7 +56,6 @@ node and a shared CA::
 Meta data can be stored in a ``RaftNode`` which is then shared with neighbouring nodes in every message sent. Meta data
 should, for this reason, be kept to a minimum and used only to share important, required information.
 """
-import hashlib
 import logging
 import math
 import pickle
@@ -158,7 +157,6 @@ class Neighbour(object):
     :param address: Address of the neighbour node
     """
     def __init__(self, address: str):
-        self.id = hashlib.sha1(pickle.dumps(address)).hexdigest()
         self.address = address
         self.meta = {}
 
