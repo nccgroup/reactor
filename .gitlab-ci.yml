@@ -90,6 +90,9 @@ t:unit:
 t:integration:5.6.16:
   extends: .cache_template
   stage: test
+  except:
+    variables:
+      - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
     - b:reactor
   services:
@@ -103,6 +106,9 @@ t:integration:5.6.16:
 t:integration:6.3.0:
   extends: .cache_template
   stage: test
+  except:
+    variables:
+      - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
       - b:reactor
   services:
@@ -116,6 +122,9 @@ t:integration:6.3.0:
 t:integration:6.8.2:
   extends: .cache_template
   stage: test
+  except:
+    variables:
+      - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
     - b:reactor
   services:
@@ -129,6 +138,9 @@ t:integration:6.8.2:
 t:integration:7.3.0:
   extends: .cache_template
   stage: test
+  except:
+    variables:
+      - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
     - b:reactor
   services:
