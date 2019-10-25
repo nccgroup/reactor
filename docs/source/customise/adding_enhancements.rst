@@ -4,9 +4,9 @@ Adding a new Enhancement
 ========================
 
 This document describes how to create a new enhancement. Built in enhancements live in ``reactor/enhancement.py`` and
-are a subclass of :py:class:`BaseEnhancement`. At a minimum, your enhancement needs to implement the ``process`` function.
+are a subclass of :py:class:`reactor.enhancement.BaseEnhancement`. At a minimum, your enhancement needs to implement the ``process`` function.
 
-A special exception class :py:class:`DropAlertException` can be used in an enhancement to drop alerts if custom
+A special exception class :py:exc:`reactor.enhancement.DropAlertException` can be used in an enhancement to drop alerts if custom
 conditions are met. For example:
 
 .. code-block:: python
@@ -17,11 +17,12 @@ conditions are met. For example:
             if alert['match_body']['field_1'] == alert['match_body']['field_2']:
                 raise DropMatchException()
 
-.. py:method:: BaseEnhancement.process(self, alert: dict)
+.. py:method:: reactor.enhancement.BaseEnhancement.process(self, alert: dict)
+    :noindex:
 
     Reactor will call this function to allow the enhancement to process the alert. ``alert`` is the result of
-    :py:meth:`Rule.get_alert_body`. An enhancement can choose to either do nothing to the alert, alter the alert in some
-    way to enhance it, or raise a :py:class:`DropAlertException` to drop the alert.
+    :py:meth:`reactor.rule.Rule.get_alert_body`. An enhancement can choose to either do nothing to the alert, alter the alert in some
+    way to enhance it, or raise a :py:exc:`reactor.enhancement.DropAlertException` to drop the alert.
 
 Tutorial
 --------

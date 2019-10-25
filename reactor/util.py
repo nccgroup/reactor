@@ -30,7 +30,7 @@ class ElasticSearchClient(elasticsearch.Elasticsearch):
     """ Extension of low level :class:`elasticsearch.ElasticSearch` client with additional version resolving. """
 
     def __init__(self, *args, **kwargs):
-        super(ElasticSearchClient, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._es_version = None
 
     @property

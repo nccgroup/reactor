@@ -234,7 +234,7 @@ or loaded from a module. For loading from a module, the type should be specified
 alerters
 ^^^^^^^^
 
-``alerters``: The :py:class:`Alerter` type to use. This may be one or more of the built in alerters, see :ref:`Alerters <configure_alerters>` section below for more information,
+``alerters``: The :py:class:`reactor.alerter.Alerter` type to use. This may be one or more of the built in alerters, see :ref:`Alerters <configure_alerters>` section below for more information,
 or loaded from a module. For loading from a module, the alert should be specified as ``module.file.AlertName``. (Required, string or list, no default)
 
 Optional Settings
@@ -616,7 +616,7 @@ enhancements
 ^^^^^^^^^^^^
 
 ``enhancements``: A list of enhancement modules to use with this rule. An enhancement module is a subclass of
-:py:class:`BaseEnhancement` that will be given the alert dictionary and can modify it before it is passed to the alerter.
+:py:class:`reactor.enhancement.BaseEnhancement` that will be given the alert dictionary and can modify it before it is passed to the alerter.
 The enhancements will be run after silence and realert is calculated and in the case of aggregated alerts, right before
 the alert is sent. This can be changed by setting ``run_enhancements_first``. The enhancements should be specified as
 ``module.file.EnhancementName``.
@@ -1289,7 +1289,7 @@ Alerters
 ========
 
 Each rule may have any number of alerters attached to it.
-Alerters are subclasses of :py:class:`Alerter` and are passed a dictionary from Reactor which contain relevant information.
+Alerters are subclasses of :py:class:`reactor.alerter.Alerter` and are passed a dictionary from Reactor which contain relevant information.
 They are configured in the rule configuration file under the ``alerters`` option.
 
 To set the alerters for a rule, set the ``alerters`` option to the name of the alerter, or a list of the names of alerters:
@@ -1583,7 +1583,7 @@ Example usage::
 Enhancements
 ============
 
-Each rule may have any number of enhancements attached to it. Enhancements are a subclass of :py:class:`BaseEnhancement`
+Each rule may have any number of enhancements attached to it. Enhancements are a subclass of :py:class:`reactor.enhancement.BaseEnhancement`
 and are passed either the alert from Reactor.
 They are configured in the rule configuration file under either ``enhancements`` option.
 

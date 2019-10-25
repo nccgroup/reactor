@@ -14,21 +14,26 @@ logging.getLogger('reactor.plugin').addHandler(logging.NullHandler())
 
 class BasePlugin(object):
     """
+    The base class for all plugins used by Reactor.
     Plugins are threads or processes that run alongside the Reactor core to provide
     additional functionality to the system.
+
+    :param reactor: Reactor instance that the plugin will run alongside
+    :param conf: Configuration for the plugin
     """
 
     def __init__(self, reactor: Reactor, conf: dict):
         self.reactor = reactor
         self.conf = conf
 
-    def start(self):
+    def start(self) -> None:
         """ Starts the plugin. """
         raise NotImplementedError()
 
-    def shutdown(self, timeout: int = None):
+    def shutdown(self, timeout: int = None) -> None:
         """
         Shuts down the plugin.
+
         :param timeout: Duration in seconds to block waiting for the plugin to shutdown
         """
         raise NotImplementedError()
@@ -69,15 +74,15 @@ class HttpServerPlugin(BasePlugin):
             if self.path == '/':
                 reactor = self.server.reactor  # type: Reactor
                 response = {'up_time': time.monotonic(),
-                            'cluster': {'size': len(reactor.raft.neighbourhood),
-                                        'leader': reactor.raft.addr_to_str(reactor.raft.leader),
-                                        'neighbourhood': list(map(reactor.raft.addr_to_str, reactor.raft.neighbourhood)),
-                                        'changed': time.time() - reactor.raft.changed},
+                            'cluster': {'size': len(reactor.cluster.neighbourhood),
+                                        'leader': reactor.cluster.leader,
+                                        'neighbourhood': list(reactor.cluster.neighbourhood),
+                                        'changed': time.time() - reactor.cluster.changed},
                             'rules': []}
 
                 for rule in reactor.loader:
                     rule = {'locator': rule.locator,
-                            'running': rule.locator in reactor.raft.meta['executing'],
+                            'running': rule.locator in reactor.cluster.meta['executing'],
                             'time_taken': rule.data.time_taken}
                     response['rules'].append(rule)
             else:
@@ -86,7 +91,7 @@ class HttpServerPlugin(BasePlugin):
             self._send_json_response(200, json.dumps(response).encode('UTF-8'))
 
     def __init__(self, *args, **kwargs):
-        super(HttpServerPlugin, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self._thread = None  # type: threading.Thread
         self._httpd = None  # type: http.server.HTTPServer

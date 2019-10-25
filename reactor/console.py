@@ -21,6 +21,12 @@ BLACK_ON_GREEN = 6
 
 
 class Console(object):
+    """
+    A simple ncurses application to provide a system administrator/developer a view of the current state of the reactor
+    indices in Elasticsearch. Provides 3 types of view: a table of indices, a table of index entries, and a index item.
+
+    :param reactor: Instance of :py:class:`Reactor`
+    """
     settings = {'indices': {'mappings': {'uuid': 'UUID',
                                          'index': 'Index Name',
                                          'status': 'Status',
@@ -138,6 +144,7 @@ class Console(object):
         self.inner_window.resize(self.window.getmaxyx()[0] - 4, self.window.getmaxyx()[1] - 2)
 
     def run(self) -> int:
+        """ Run the console application. """
         if not self.reactor.wait_until_responsive(timeout=self.reactor.args['timeout']):
             return 1
 

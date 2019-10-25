@@ -3,17 +3,21 @@ from .rule import Rule
 
 class BaseEnhancement(object):
     """
+    The base class for all enhancements used by Reactor.
     Enhancements take an alert dictionary object and modify it in some way to
     enhance the alert. These are specified in each rule under the ``enhancements`` option.
+
+    :param rule: Rule for the enhancement
     """
 
     def __init__(self, rule: Rule):
         self.rule = rule
 
-    def process(self, alert: dict):
+    def process(self, alert: dict) -> None:
         """
         Modify the contents of an alert dictionary, in some way.
         See :py:func:`reactor.rule.get_alert_body` for the structure of the alert dictionary.
+
         :raises DropAlertException: To drop this alert
         """
         pass
@@ -49,7 +53,7 @@ class MetaDataEnhancement(BaseEnhancement):
         }
     """
     def __init__(self, rule: Rule):
-        super(MetaDataEnhancement, self).__init__(rule)
+        super().__init__(rule)
         self._metadata = self.rule.conf('metadata_fields', ['category', 'description', 'owner', 'priority'])
 
     def process(self, alert: dict):

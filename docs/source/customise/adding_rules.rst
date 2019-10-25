@@ -4,14 +4,16 @@ Adding a new Rule
 =================
 
 This document describes how to create a new rule type. Built in rule types live in ``reactor/rule.py`` and are
-subclasses of :py:class:`Rule`. At the minimum, your rule needs to also subclass ``AcceptsHitsDataMixin`` which requires
-that ``add_hits_data`` is implemented.
-
-Your class may implement several functions from :py:class:`Rule`:
+subclasses of :py:class:`reactor.rule.Rule`. At a minimum, your rule needs to implement one of:
+:py:meth:`reactor.rule.Rule.add_hits_data`,
+:py:meth:`reactor.rule.Rule.add_count_data`,
+:py:meth:`reactor.rule.Rule.add_terms_data`, or
+:py:meth:`reactor.rule.Rule.add_aggregation_data`.
+Your class may implement several functions from :py:class:`reactor.rule.Rule`:
 
 .. code-block:: python
 
-    class AwesomeNewRule(AcceptsHitsDataMixin, Rule):
+    class AwesomeNewRule(Rule):
         # ...
         def add_hits_data(self, data: list):
             # ...
@@ -21,41 +23,46 @@ Your class may implement several functions from :py:class:`Rule`:
             # ...
 
 You can import new rule types by specifying the type as ``module.file.RuleName``, where module is the name of a Python
-module, or folder containing ``__init__.py``, and file is the name of the Python file containing a :py:class:`Rule`
+module, or folder containing ``__init__.py``, and file is the name of the Python file containing a :py:class:`reactor.rule.Rule`
 subclass named ``RuleName``.
 
 Basics
 ------
 
-The :py:class:`Rule` instance remains in memory while Reactor is running, receives data, keeps track of its state, and
-generates matches. Several important member properties are created in the ``__init__`` method of :py:class:`Rule`:
+The :py:class:`reactor.rule.Rule` instance remains in memory while Reactor is running, receives data, keeps track of its state, and
+generates matches. Several important member properties are created in the ``__init__`` method of :py:class:`reactor.rule.Rule`:
 
-.. py:attribute:: Rule._schema_file
+.. py:attribute:: reactor.rule.Rule._schema_file
+    :noindex:
 
     The relative path from ``cls._schema_relative`` (defaults to ``reactor.rule.py``) to the configuration schema
     file. The file should be in a ``.yaml`` format and should describe all options required and optional for using the
     Rule using the `JSON Schema Draft 7 specification <https://json-schema.org/specification-links.html#draft-7>`_.
     Reactor will validate all rule configurations that specify this rule *before* instantiation.
 
-.. py:attribute:: Rule._schema_relative
+.. py:attribute:: reactor.rule.Rule._schema_relative
+    :noindex:
 
     The absolute path that ``cls._schema_file`` is relative to (defaults to ``reactor.rule.py``).
 
 
-.. py:attribute:: Rule._conf
+.. py:attribute:: reactor.rule.Rule._conf
+    :noindex:
 
     This dictionary is loaded from the rule configuration file. If there is a ``timeframe`` configuration option, this
     will be automatically converted to a ``datetime.timedelta`` object when the rules are loaded. Values from this
     dictionary can be accessed via ``Rule.conf()`` and set via ``Rule.set_conf()``.
 
-.. py:attribute:: Rule._data
+.. py:attribute:: reactor.rule.Rule._data
+    :noindex:
 
     This is an instance of ``WorkerData`` found in ``reactor/rule.py`` and should contain all the working data required
     for the rule to efficiently be executed again. All the values contained **MUST** be able to be pickled as this is
     passed between processes.
 
 
-.. py:method:: Rule.add_hits_data(self, data: list):
+.. py:method:: reactor.rule.Rule.add_hits_data(self, data: list)
+    :noindex:
 
     When Reactor queries Elasticsearch, it will pass all of the hits to the rule type by calling ``add_hits_data``.
     ``data`` is a list of dictionary objects which contain all of the fields in ``include``, ``query_key`` and ``compare_key``
@@ -70,7 +77,7 @@ generates matches. Several important member properties are created in the ``__in
 
     .. code-block:: python
 
-        def add_hits_data(self, data: list) -> Generator[dict, None, None]:
+        def add_hits_data(self, data: list) -> Iterable[tuple]:
             for event in data:
                 if self.is_a_match(event):
                     extra = {'reason': self.get_last_reason(),
@@ -87,14 +94,16 @@ generates matches. Several important member properties are created in the ``__in
     - ``began_at``: The timestamp of the first event
     - ``ended_at``: The timestamp of the last event
 
-.. py:method:: Rule.get_match_str(self, extra: dict, match: dict)
+.. py:method:: reactor.rule.Rule.get_match_str(self, extra: dict, match: dict)
+    :noindex:
 
     Alerters will call this function to get a human readable string about a match for an alert. Extra and match will be the
-    same objects yielded by your Rule, however they may have been altered by enhancements. The :py:class:`Rule` base implementation
+    same objects yielded by your Rule, however they may have been altered by enhancements. The :py:class:`reactor.rule.Rule` base implementation
     will return an empty string. Note that by default, the alert text will already contain the key-value pairs from the match.
     This should return a string that gives some information about the match in the context of this specific Rule.
 
-.. py:method:: Rule.garbage_collect(self, timestamp: datetime.datetime)
+.. py:method:: reactor.rule.Rule.garbage_collect(self, timestamp: datetime.datetime)
+    :noindex:
 
     This will be called after Reactor has run over a time period ending in ``timestamp`` and should be used to clear any
     state that may be obsolete as of ``timestamp``. ``timestamp`` is a datetime object.
@@ -138,7 +147,7 @@ Now, in a file named ``my_rules.py``, add
 
     import dateutil.parser
 
-    from reactor.rule import Rule, AcceptsHitsDataMixin
+    from reactor.rule import Rule
 
     # reactor.util includes useful utility functions
     # such as converting from timestamp to datetime obj
@@ -146,7 +155,7 @@ Now, in a file named ``my_rules.py``, add
     from reactor.util import ts_to_dt, dots_get
 
 
-    class AwesomeRule(AcceptsHitsDataMixin, Rule):
+    class AwesomeRule(Rule):
 
         # By setting _schema_file and _schema_relative you can ensure that
         # the rule config file specifies all of the options and they are

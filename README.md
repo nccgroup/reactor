@@ -23,8 +23,8 @@ removes support we are likely to follow suite.
 
 ## Development
 You can start an elasticsearch instance inside docker for local development using the following command:
-```shell script
-docker run -d -p 9200:9200/tcp --name elasticsearch docker.elastic.co/elasticsearch/elasticsearch:<version>
+```console
+$ docker run -d -p 9200:9200/tcp --name elasticsearch docker.elastic.co/elasticsearch/elasticsearch:<version>
 ```
 
 And the following configuration in `config.yaml`:
@@ -41,6 +41,12 @@ rule:
   elasticsearch: *elasticsearch
 ```
 
+### Git Hooks
+This project provides git hooks to stop user error. Please run the following commands:
+
+```console
+$ cp .git-hooks-pre-push .git/hooks/pre-push
+```
 
 ## Running tests
 Reactor is covered by two types of testing: unit and integration. Unit testing to ensure
@@ -49,8 +55,8 @@ whole system works in unison.
 
 ### Unit
 The unit tests are written using PyTest. To run all the tests run the following command:
-```shell script
-py.test
+```console
+$ py.test
 ```
 
 ### Integration
@@ -74,16 +80,16 @@ cluster.initial_master_nodes=elasticsearch
 ```
 
 To execute the integration tests run the following command: 
-```shell script
-docker-compose -f docker-compose-test.yml up --abort-on-container-exit --build  reactor elasticsearch
+```console
+$ docker-compose -f docker-compose-test.yml up --abort-on-container-exit --build  reactor elasticsearch
 ```
 
 
 ## Create SSL certs for RAFT leadership
 The following set of commands (performed in ``./certs/``) will create a set a CA and device certificate for running the mock cluster on localhost:
-```shell script
+```console
 # Only do once: generate the root CA key:
-> openssl genrsa -out transport-ca.key 4096
+$ openssl genrsa -out transport-ca.key 4096
 
 # Generate the root CA certificate:
 ## Country Name (2 letter code) []:GB
@@ -93,11 +99,11 @@ The following set of commands (performed in ``./certs/``) will create a set a CA
 ## Organizational Unit Name (eg, section) []:.
 ## Common Name (eg, fully qualified host name) []:PyRaftLog
 ## Email Address []:.
-> openssl req -x509 -new -nodes -key transport-ca.key -sha256 -days 1024 -out transport-ca.pem
+$ openssl req -x509 -new -nodes -key transport-ca.key -sha256 -days 1024 -out transport-ca.pem
 
 # Generate device certificates
 # Only do once: generate device key:
-> openssl genrsa -out transport-consensus.key 4096
+$ openssl genrsa -out transport-consensus.key 4096
 
 # Generate device certificate signing request:
 ## Country Name (2 letter code) []:GB
@@ -107,17 +113,17 @@ The following set of commands (performed in ``./certs/``) will create a set a CA
 ## Organizational Unit Name (eg, section) []:.
 ## Common Name (eg, fully qualified host name) []:localhost
 ## Email Address []:.
-> openssl req -new -key transport-consensus.key -out transport-consensus.csr
+$ openssl req -new -key transport-consensus.key -out transport-consensus.csr
 
 # Generate a signed device certificate:
-> openssl x509 -req -in transport-consensus.csr -CA transport-ca.pem -CAkey transport-ca.key -CAcreateserial -out transport-consensus.crt -days 500 -sha256
+$ openssl x509 -req -in transport-consensus.csr -CA transport-ca.pem -CAkey transport-ca.key -CAcreateserial -out transport-consensus.crt -days 500 -sha256
 ```
 
 
 ## Build documentation
 To build the documentation:
-```shell script
-pip install -r requirements-docs.txt
-cd docs
-sphinx-build -b html -d build/doctrees -W source build/html
+```console
+$ pip install -r requirements-docs.txt
+$ cd docs
+$ sphinx-build -b html -d build/doctrees -W source build/html
 ```

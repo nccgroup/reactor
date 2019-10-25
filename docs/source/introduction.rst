@@ -92,7 +92,7 @@ Enhancements
 ------------
 
 Enhancements are a way of intercepting an alert and modifying/enhancing it in some way. Enhancements are passed the
-alert body (see :py:meth:`Rule.get_alert_body`) before it is given the the alerter(s).
+alert body (see :py:meth:`reactor.rule.Rule.get_alert_body`) before it is given the the alerter(s).
 See :ref:`Enhancements` for more information.
 
 Plugins

@@ -31,14 +31,20 @@ def get_account(account_file: str, relative_file: str = None) -> (str, str):
 
 class BaseNotifier(object):
     """
+    The base class for all notifiers used by Reactor.
     Notifier is used to inform Reactor administrator of important events such as uncaught exceptions
     raised during the execution of a rule.
+
+    :param conf: Configuration for the notifier
     """
+
     def __init__(self, conf: dict):
         self.conf = conf
 
     def notify(self, subject: str, body: str) -> None:
         """
+        Trigger a notification to be fired with ``subject`` and ``body``.
+
         :param subject: Subject of the notification
         :param body: Body of the notification
         """
@@ -47,7 +53,7 @@ class BaseNotifier(object):
 
 class EmailNotifier(BaseNotifier):
     def __init__(self, conf: dict):
-        super(EmailNotifier, self).__init__(conf)
+        super().__init__(conf)
 
         self.smtp_host = self.conf.get('smtp_host', 'localhost')
         self.smtp_port = self.conf.get('smtp_port', 0)
