@@ -18,8 +18,3 @@ class QueryException(ReactorException):
     def __init__(self, query, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.query = query
-
-
-class ClusterException(ReactorException):
-    """ Reactor raises ClusterExceptions when an issue occurs between cluster nodes. """
-    pass

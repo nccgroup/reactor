@@ -10,6 +10,7 @@
 /rules/
 /venv/
 /*.yaml
+/*.json
 /*.jsonl
 /*.ndjson
 

@@ -56,9 +56,10 @@ node and a shared CA::
 Meta data can be stored in a ``RaftNode`` which is then shared with neighbouring nodes in every message sent. Meta data
 should, for this reason, be kept to a minimum and used only to share important, required information.
 """
+import json
 import logging
 import math
-import pickle
+import os
 import queue
 import random
 import socket
@@ -70,37 +71,42 @@ import time
 from collections import OrderedDict, deque
 from typing import Dict, Optional
 
-from reactor.exceptions import ClusterException
-
 # By default add the null handler to the library logger
 logging.getLogger('raft').addHandler(logging.NullHandler())
 
-STATE_FOLLOWER = 1
-STATE_CANDIDATE = 2
-STATE_LEADER = 3
+STATE_ORPHAN = 1
+STATE_FOLLOWER = 2
+STATE_CANDIDATE = 3
+STATE_LEADER = 4
 
 ELECTION_TIMEOUT = 0.5
 HEARTBEAT_TIMEOUT = 0.1
 
-RPC_APPEND_ENTRIES = 1
-RPC_APPEND_RESPONSE = 2
-RPC_VOTE_REQUEST = 3
-RPC_VOTE_RESPONSE = 4
+RPC_PING = 1
+RPC_APPEND_ENTRIES = 2
+RPC_VOTE_ELECTION = 3
+RPC_CLUSTER_JOIN = 4
+RPC_CLUSTER_LEAVE = 5
+
+MEMBERSHIP_JOINING = 1
+MEMBERSHIP_ACTIVE = 2
+MEMBERSHIP_LEAVING = 3
 
 MSG_HEADER_FORMAT = '>H'
 
 
 _rpcToName = {
-    RPC_APPEND_ENTRIES:  'append req',
-    RPC_APPEND_RESPONSE: 'append res',
-    RPC_VOTE_REQUEST:    'vote   req',
-    RPC_VOTE_RESPONSE:   'vote   res',
+    RPC_PING:           'ping',
+    RPC_APPEND_ENTRIES: 'append',
+    RPC_VOTE_ELECTION:  'vote',
+    RPC_CLUSTER_JOIN:   'join',
+    RPC_CLUSTER_LEAVE:  'leave',
 }
 
 
 def _next_timeout(raft_state: int, exponent: int, election_timeout: float, heartbeat_timeout: float) -> float:
     """ Calculates the next timeout time based on the `raft_state` and timeout times. """
-    if raft_state == STATE_FOLLOWER:
+    if raft_state == STATE_FOLLOWER or raft_state == STATE_ORPHAN:
         return time.time() + random.uniform(election_timeout, 2 * election_timeout)
     elif raft_state == STATE_CANDIDATE:
         election_timeout *= 2 ** exponent
@@ -110,43 +116,66 @@ def _next_timeout(raft_state: int, exponent: int, election_timeout: float, heart
         return time.time() + heartbeat_timeout
 
 
-def _rpc_request(rpc: int, term: int, recipient) -> dict:
+def _rpc_request(rpc: int, recipient) -> dict:
     """
     Creates a request RPC.
+
     :param rpc: Procedure being requested
-    :param term: Current term of the requester
     :param recipient: Recipient of the message
     """
     return {'id': random.getrandbits(16),
-            'term': term,
+            'term': None,
             'rpc': rpc,
             'recipient': recipient}
 
 
-def _rpc_response(msg: dict, term: int, response: bool) -> dict:
+def _rpc_response(msg: dict, response: any) -> dict:
     """
     Creates a response RPC.
+
     :param msg: RPC request message
-    :param term: Current term of the responder
     :param response: Response to the request
     """
-    if msg['rpc'] == RPC_APPEND_ENTRIES:
-        rpc = RPC_APPEND_RESPONSE
-    else:
-        rpc = RPC_VOTE_RESPONSE
     return {'id': msg['id'],
-            'term': term,
-            'rpc': rpc,
+            'term': None,
+            'rpc': -msg['rpc'],
             'recipient': msg['sender'],
             'response': response}
 
 
 def _rpc_str(msg: dict) -> str:
     """ Generate a string of the RPC `msg`. """
-    msg_str = f"#{msg['id']:>5}|{msg['term']:>2}|{_rpcToName[msg['rpc']]}|{msg['recipient']}|{msg['sender']}"
-    if msg['rpc'] in (RPC_APPEND_RESPONSE, RPC_VOTE_RESPONSE):
-        msg_str += f"|{msg['response']}"
-    return msg_str
+    msg_str = [
+        f"#{msg['id']:>5}",
+        f"term={msg['term']:>2}",
+        f"rpc={_rpcToName[abs(msg['rpc'])]:6s} {'req' if msg['rpc'] > 0 else 'res'}",
+        f"recipient={msg['recipient']}",
+        f"sender={msg['sender']}"
+    ]
+    # If the RPC is a response
+    if msg['rpc'] < 0:
+        msg_str.append(f"response={msg['response']}")
+    return "|".join(msg_str)
+
+
+def _rpc_is_request(msg: dict) -> bool:
+    """ Returns True if the ``msg`` is a request RPC, False if it is a response """
+    return msg['rpc'] > 0
+
+
+class ReduceClassEncoder(json.JSONEncoder):
+    def default(self, o):
+        if hasattr(o, '__reduce__'):
+            r = o.__reduce__()
+            return {'__class__': f'{r[0].__name__}',
+                    '__args__': r[1]}
+        return super().default(o)
+
+    @staticmethod
+    def object_hook(json_object):
+        if json_object.get('__class__') == 'RaftNeighbour':
+            return RaftNeighbour(*json_object['__args__'])
+        return json_object
 
 
 class Neighbour(object):
@@ -195,9 +224,6 @@ class Node(object):
         """ List of addresses in the neighbourhood. """
         return [self.address] + list(self.neighbours.keys())
 
-    def set_ssl(self, *args, **kwargs):
-        pass
-
     def start(self) -> None:
         """ Start the cluster node. """
         pass
@@ -219,12 +245,21 @@ class Node(object):
 
     def leader_meta(self) -> dict:
         """ Returns the meta data of the cluster leader. """
-        if self.leader and not self.is_leader():
-            return self.neighbours[self.leader].meta
-        elif self.is_leader():
+        if self.is_leader():
             return self._meta
+        elif self.has_leader():
+            return self.neighbours[self.leader].meta
         else:
             return {}
+
+    def neighbour(self, address: str = None) -> Optional[Neighbour]:
+        """ Return the neighbour with ``address`` or the leader. """
+        return self._neighbours.get(address or self.leader)
+
+
+class ClusterException(Exception):
+    """ Reactor raises ClusterExceptions when an issue occurs between cluster nodes. """
+    pass
 
 
 class RaftNeighbour(Neighbour):
@@ -232,9 +267,11 @@ class RaftNeighbour(Neighbour):
     This is a useful store of information about a neighbour node used by :py:class`RaftNode`.
 
     :param address: Address of the neighbour node, e.g. ``'node1:7000'``
+    :param founder: True if neighbour is a founding cluster member
+    :param membership: Status of the neighbours membership
     :param history_len: Length of history to keep
     """
-    def __init__(self, address: str, history_len: int = 100):
+    def __init__(self, address: str, founder: bool = True, membership: int = MEMBERSHIP_ACTIVE, history_len: int = 100):
         super().__init__(address)
         self.term = 0
         self.queued = History(history_len)
@@ -243,6 +280,15 @@ class RaftNeighbour(Neighbour):
         self.ping = deque(maxlen=history_len)
         self.failed_count = 0
         self.contacted = False
+
+        self._timestamp = time.time()
+        self.founder = founder
+        self.membership = membership
+        self.msg = None
+        self.neighbours = []
+
+    def __reduce__(self):
+        return self.__class__, (self.address, self.founder, self.membership, self.ping.maxlen)
 
     def append_queued(self, msg: dict) -> None:
         """ Append a message to the queued history. """
@@ -259,9 +305,12 @@ class RaftNeighbour(Neighbour):
             while self.queued.tail and self.awaiting_res():
                 del self.queued[self.queued.tail]
 
+        self.membership = MEMBERSHIP_ACTIVE if self.membership == MEMBERSHIP_ACTIVE else MEMBERSHIP_JOINING
+        self.founder = False if self.membership == MEMBERSHIP_JOINING else self.founder
         self.recv[msg['id']] = time.time()
         self.term = msg['term']
         self.meta = msg['meta']
+        self.neighbours = msg['neighbours']
         self.failed_count = 0
         if msg['id'] in self.sent:
             self.ping.append(self.recv[msg['id']] - self.sent[msg['id']])
@@ -274,15 +323,15 @@ class RaftNeighbour(Neighbour):
 
     @property
     def last_queued(self) -> float:
-        return self.queued[self.queued.tail] if len(self.queued) else 0.0
+        return self.queued[self.queued.tail] if len(self.queued) else self._timestamp  # 0.0
 
     @property
     def last_sent(self) -> float:
-        return self.sent[self.sent.tail] if len(self.sent) else 0.0
+        return self.sent[self.sent.tail] if len(self.sent) else self._timestamp  # 0.0
 
     @property
     def last_recv(self) -> float:
-        return self.recv[self.recv.tail] if len(self.recv) else 0.0
+        return self.recv[self.recv.tail] if len(self.recv) else self._timestamp  # 0.0
 
 
 class RaftNode(Node):
@@ -328,7 +377,8 @@ class RaftNode(Node):
 
         self._terminate = threading.Event()
         self._term = 1
-        self._state = STATE_FOLLOWER
+        self._founder = address in neighbours or not neighbours
+        self._state = STATE_FOLLOWER if self._founder else STATE_ORPHAN
 
         self._queue = queue.Queue()
         self._elections = dict()
@@ -342,6 +392,10 @@ class RaftNode(Node):
         self._threads = []
         self._execute_called = False
         self._terminate_called = 0
+
+        # Check for read/write access
+        if not os.access(os.curdir, os.R_OK | os.W_OK):
+            raise ClusterException('Missing read/write access in current directory')
 
     @property
     def state(self) -> int:
@@ -361,7 +415,7 @@ class RaftNode(Node):
 
     @property
     def neighbours(self) -> Dict[str, RaftNeighbour]:
-        return self._neighbours
+        return {a: n for a, n in self._neighbours.items() if n.membership == MEMBERSHIP_ACTIVE}
 
     def is_majority(self, count: int, strong: bool = True) -> bool:
         """ Return whether the count is a majority of the neighbourhood. """
@@ -389,6 +443,7 @@ class RaftNode(Node):
     def _wrap_socket(self, sock: socket.socket, server_hostname: str = None) -> socket.socket:
         """
         If SSL has been set, wrap the `sock` into an SSL context.
+
         :param sock: Socket to be wrapped
         :param server_hostname: Hostname of the server
         """
@@ -427,10 +482,10 @@ class RaftNode(Node):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.bind((local_address, int(local_port)))
         sock.settimeout(self.SOCKET_TIMEOUT)
-        sock.listen(len(self.neighbours))
+        sock.listen(len(self._neighbours))
 
         logger = logging.getLogger('raft.listen')
-        while not self._terminate.is_set() and len(self.neighbours):
+        while not self._terminate.is_set():
             # Handle a connection from another RaftNode
             try:
                 (client_sock, address) = sock.accept()
@@ -449,6 +504,7 @@ class RaftNode(Node):
     def receive(self, client_sock: socket.socket) -> None:
         """
         Thread function to receive messages from a neighbouring RAFT node.
+
         :param client_sock: Socket to receive messages
         """
         client_sock.settimeout(self.SOCKET_TIMEOUT)
@@ -474,20 +530,38 @@ class RaftNode(Node):
 
             logger.debug('Recv %s', _rpc_str(msg))
 
-            self.neighbours[msg['sender']].append_recv(msg)
+            if msg['sender'] not in self._neighbours:
+                self._neighbours[msg['sender']] = RaftNeighbour(msg['sender'], False, MEMBERSHIP_JOINING)
+                logger.info('Added neighbour: %s', msg['sender'])
+            self._neighbours[msg['sender']].append_recv(msg)
             # handle message
             if msg['term'] > self._term:
-                self.state = STATE_FOLLOWER
+                self.state = STATE_FOLLOWER if self.state != STATE_ORPHAN else STATE_ORPHAN
                 self._term = msg['term']
 
+            # Handle RPC requests
+            if msg['rpc'] == RPC_PING:
+                self._handle_rpc_ping(msg, logger)
             if msg['rpc'] == RPC_APPEND_ENTRIES:
                 self._handle_rpc_append_entries(msg, logger)
-            elif msg['rpc'] == RPC_APPEND_RESPONSE:
-                pass
-            elif msg['rpc'] == RPC_VOTE_REQUEST:
+            elif msg['rpc'] == RPC_VOTE_ELECTION:
                 self._handle_rpc_vote_request(msg, logger)
-            elif msg['rpc'] == RPC_VOTE_RESPONSE:
+            elif msg['rpc'] == RPC_CLUSTER_JOIN:
+                self._handle_rpc_cluster_join_request(msg, logger)
+            elif msg['rpc'] == RPC_CLUSTER_LEAVE:
+                self._handle_rpc_cluster_leave_request(msg, logger)
+
+            # Handle RPC responses
+            elif msg['rpc'] == -RPC_PING:
+                self._handle_rpc_ping(msg, logger)
+            elif msg['rpc'] == -RPC_APPEND_ENTRIES:
+                self._handle_rpc_append_entries(msg, logger)
+            elif msg['rpc'] == -RPC_VOTE_ELECTION:
                 self._handle_rpc_vote_response(msg, logger)
+            elif msg['rpc'] == -RPC_CLUSTER_JOIN:
+                self._handle_rpc_cluster_join_response(msg, logger)
+            elif msg['rpc'] == -RPC_CLUSTER_LEAVE:
+                self._handle_rpc_cluster_leave_response(msg, logger)
 
             time.sleep(0.001)
 
@@ -496,6 +570,7 @@ class RaftNode(Node):
     def receive_msg(self, sock: socket.socket, msg_len: int) -> Optional[dict]:
         """
         Attempt to read a message from `sock` that `msg_len` bytes long.
+
         :param sock: Socket to read the buffer
         :param msg_len: Length of the message
         :return: Parsed message or None
@@ -505,14 +580,14 @@ class RaftNode(Node):
             try:
                 while len(buffer) < msg_len:
                     buffer += sock.recv(min(255, msg_len-len(buffer)))
-                return pickle.loads(buffer)
+                return json.loads(buffer, object_hook=ReduceClassEncoder.object_hook)
             except socket.timeout:
                 pass
         return None
 
     def queue_msg(self, msg: dict) -> None:
         """ Queue `msg` to be sent and add to the recipient neighbours' queued history. """
-        neighbour = self.neighbours[msg['recipient']]
+        neighbour = self._neighbours[msg['recipient']]
         neighbour.append_queued(msg)
         self._queue.put(msg)
 
@@ -521,7 +596,7 @@ class RaftNode(Node):
         pool = dict()
         msg = recipient = None
         logger = logging.getLogger('raft.send')
-        while not self._terminate.is_set() and len(self.neighbours):
+        while not self._terminate.is_set():
             try:
                 msg = self._queue.get(block=True, timeout=self.QUEUE_TIMEOUT)
                 recipient = msg['recipient']
@@ -529,19 +604,22 @@ class RaftNode(Node):
                 msg['sender'] = self.address
                 msg['meta'] = self.meta
                 msg['state'] = self.state
+                msg['neighbours'] = self._neighbours
 
                 if recipient not in pool:
                     sock = socket.create_connection(recipient.split(':', 2))
                     sock = self._wrap_socket(sock, recipient.split(':', 2)[0])
                     pool[recipient] = sock
 
-                msg_body = pickle.dumps(msg)
+                msg_body = json.dumps(msg, cls=ReduceClassEncoder).encode('utf-8')
                 msg_header = struct.pack(MSG_HEADER_FORMAT, len(msg_body))
                 buffer = msg_header + msg_body
                 pool[recipient].sendall(buffer)
                 logger.debug('Sent %s', _rpc_str(msg))
 
-                self.neighbours[recipient].append_sent(msg)
+                if recipient not in self._neighbours:
+                    self._neighbours[recipient] = RaftNeighbour(recipient, False, MEMBERSHIP_JOINING)
+                self._neighbours[recipient].append_sent(msg)
                 msg = recipient = None
 
             except queue.Empty:
@@ -572,6 +650,9 @@ class RaftNode(Node):
         if self._execute_called:
             raise RuntimeError('RaftNode already executing')
 
+        # Load neighbours from persistent storage
+        self._load_neighbours()
+
         logger = logging.getLogger('raft.exec')
         self._execute_called = True
         self._terminate.clear()
@@ -580,14 +661,22 @@ class RaftNode(Node):
         self._start_thread(target=self.send, name='RAFT-send')
         self._start_thread(target=self.listen, name='RAFT-listen')
 
-        # If there are no neighbours, immediately elect yourself and sleep until shutdown is called
+        # If there are no neighbours, immediately elect yourself
         if not self.neighbours:
             self._handle_inauguration(logger)
-            self._terminate.wait()
 
         while not self._terminate.is_set():
+            # Orphan
+            if self.state == STATE_ORPHAN:
+                # If we have timeout out
+                if time.time() > self._timeout_time and self.neighbours:
+                    neighbour = random.choice(list(self.neighbours.keys()))
+                    logger.debug('Requesting cluster leader from %s', neighbour)
+                    # Send a random neighbour a ping request and wait for up to heartbeat timeout
+                    self.queue_msg(_rpc_request(RPC_PING, neighbour))
+                    self._timeout_time = time.time() + self._heartbeat_timeout
             # Follower
-            if self.state == STATE_FOLLOWER:
+            elif self.state == STATE_FOLLOWER:
                 # If election timeout reached
                 if time.time() > self._timeout_time:
                     logger.warning('Convert to candidate')
@@ -604,8 +693,7 @@ class RaftNode(Node):
                     self._timeout_time = _next_timeout(self.state, self._failed_elections,
                                                        self._election_timeout, self._heartbeat_timeout)
                     for neighbour in self.neighbours.values():
-                        msg = _rpc_request(RPC_VOTE_REQUEST, self._term, neighbour.address)
-                        self.queue_msg(msg)
+                        self.queue_msg(_rpc_request(RPC_VOTE_ELECTION, neighbour.address))
                     continue
                 # If we have a majority
                 if self.is_majority(sum(1 for _ in filter(None, self._elections[self._term].values()))):
@@ -617,8 +705,7 @@ class RaftNode(Node):
                     heartbeat_timeout = neighbour.last_sent + (self._heartbeat_timeout * 2 ** neighbour.failed_count)
                     if not neighbour.contacted or (time.time() > heartbeat_timeout and not neighbour.awaiting_res()):
                         neighbour.contacted = True
-                        msg = _rpc_request(RPC_APPEND_ENTRIES, self._term, neighbour.address)
-                        self.queue_msg(msg)
+                        self.queue_msg(_rpc_request(RPC_APPEND_ENTRIES, neighbour.address))
                     elif neighbour.contacted and time.time() > heartbeat_timeout:
                         neighbour.failed_count += 1
 
@@ -656,6 +743,15 @@ class RaftNode(Node):
                 # Unknown state
                 pass
 
+            # If there isn't a leader or we are the leader
+            if not self.has_leader() or self.is_leader():
+                # If we haven't heard from a non founder neighbour within 4 times `election_timeout` seconds
+                for neighbour in self.neighbours.values():
+                    if not neighbour.founder and neighbour.last_recv + (4 * self._election_timeout) < time.time():
+                        logger.info('Evicting %s from cluster', neighbour.address)
+                        neighbour.membership = MEMBERSHIP_LEAVING
+                        self._store_neighbours(logger)
+
             time.sleep(0.001)
 
         self._execute_called = False
@@ -668,57 +764,153 @@ class RaftNode(Node):
         """ Set the terminate flag and increment """
         logger = logging.getLogger('raft')
         self._terminate_called += 1
-        self._terminate.set()
-        if self._terminate_called == self.MAX_TERMINATE_CALLED:
+        if self._terminate_called >= self.MAX_TERMINATE_CALLED:
             logger.error(f"RaftNode failed to terminate after {self._terminate_called} attempts")
             raise ClusterException()
-        else:
-            logger.info('Attempting normal shutdown')
+
+        # Attempt to leave the cluster
+        if not self._founder:
+            logger.info('Attempting to leave cluster')
+            for neighbour in self._neighbours.values():
+                if neighbour.membership != MEMBERSHIP_ACTIVE:
+                    continue
+                neighbour.membership = MEMBERSHIP_LEAVING
+                self.queue_msg(_rpc_request(RPC_CLUSTER_LEAVE, neighbour.address))
+                logger.info('Sent leave request to %s', neighbour.address)
+            self.state = STATE_ORPHAN
+            # Wait for at least one node to receive the message
+            self._terminate.wait(timeout or self._election_timeout)
+
+        self._terminate.set()
+        logger.info('Attempting normal shutdown')
 
         for thread in self._threads:
             thread.join(timeout)
+
+        if not self._founder:
+            self._remove_neighbours(logger)
+
+    def _hash_neighbours(self):
+        return '|'.join([f'{n.address}:{n.membership}' for n in self.neighbours.values()])
+
+    def _remove_neighbours(self, logger: logging.Logger):
+        if os.path.exists(f'{self.address}.json') and os.path.isfile(f'{self.address}.json'):
+            os.remove(f'{self.address}.json')
+            logger.debug('Removed persistent storage')
+
+    def _store_neighbours(self, logger: logging.Logger):
+        """ Store the neighbours in our """
+        with open(f'{self.address}.json', 'w') as fh:
+            neighbours = [{'address': self.address, 'founder': self._founder}]
+            neighbours += [{'address': n.address, 'founder': n.founder} for n in self.neighbours.values()]
+            json.dump(neighbours, fh, cls=ReduceClassEncoder)
+            logger.debug('Updating persistent storage')
+
+    def _load_neighbours(self):
+        try:
+            with open(f'{self.address}.json', 'r') as fh:
+                neighbours = json.load(fh, object_hook=ReduceClassEncoder.object_hook)
+                self._state = STATE_FOLLOWER
+                for n in neighbours:
+                    if n['address'] == self.address:
+                        continue
+                    self._neighbours.setdefault(n['address'], RaftNeighbour(n['address'], False, MEMBERSHIP_ACTIVE))
+
+        except FileNotFoundError:
+            pass
 
     def _handle_connection_failure(self, msg: dict, logger: logging.Logger) -> None:
         """ Handles connection failure to ``msg`` recipient. """
         recipient = msg['recipient']
         if msg is not None:
-            if self.neighbours[recipient].failed_count == 0:
+            if self._neighbours[recipient].failed_count == 0:
                 logger.warning('Connection error %s', recipient)
             else:
-                logger.debug('Connection error %s (%s)', recipient, self.neighbours[recipient].failed_count)
+                logger.info('Connection error %s (%s)', recipient, self._neighbours[recipient].failed_count)
 
-            self.neighbours[recipient].failed_count += 1
-            del self.neighbours[recipient].queued[msg['id']]
+            self._neighbours[recipient].failed_count += 1
+            del self._neighbours[recipient].queued[msg['id']]
+
+    def _handle_rpc_ping(self, msg, logger: logging.Logger):
+        # If msg is a RPC_PING request
+        if _rpc_is_request(msg):
+            self.queue_msg(_rpc_response(msg, self.leader))
+        # Otherwise, msg is a response
+        # If we are not an orphan
+        elif self.state != STATE_ORPHAN:
+            return
+        # If msg has a response
+        elif msg['response']:
+            # Send RPC_CLUSTER_JOIN request to leader
+            self.queue_msg(_rpc_request(RPC_CLUSTER_JOIN, msg['response']))
+            # Extend timeout to wait for an election timeout
+            self._timeout_time = time.time() + self._election_timeout
+            logger.debug('Attempting to join cluster (leader=%s)', msg['response'])
+        # If msg is a response has no leader extend to allow time for an election
+        else:
+            # Extend timeout to wait for an election timeout
+            self._timeout_time = time.time() + (2 * self._election_timeout)
+            logger.debug('Waiting for cluster to elected leader')
 
     def _handle_rpc_append_entries(self, msg, logger: logging.Logger):
         """ Handles RPC ``APPEND_ENTRIES``. """
-        self.state = STATE_FOLLOWER
-        self._term = msg['term']
-        self._timeout_time = _next_timeout(self.state, 0, self._election_timeout, self._heartbeat_timeout)
-        response = msg['term'] >= self._term
-        self.queue_msg(_rpc_response(msg, self._term, response))
-        if response and self.leader != msg['sender']:
+        if _rpc_is_request(msg):
+            response = msg['term'] >= self._term
+            self.queue_msg(_rpc_response(msg, response))
+            if response and self.leader != msg['sender']:
+                self.leader = msg['sender']
+                logger.warning('Accepted leader %s | %s', self._term, msg['sender'])
+
+            self._failed_elections = 0
+
+            # Update neighbours
+            neighbours_hash = self._hash_neighbours()
+            for neighbour in msg['neighbours']:
+                # Skip ourself
+                if neighbour == self.address:
+                    continue
+                # Add new neighbours
+                elif neighbour not in self._neighbours:
+                    self._neighbours[neighbour] = msg['neighbours'][neighbour]
+                self._neighbours[neighbour].membership = msg['neighbours'][neighbour].membership
+            # Remove neighbour
+            list(map(self._neighbours.pop, set(self._neighbours.keys() - ({msg['sender']} | msg['neighbours'].keys()))))
+            if neighbours_hash != self._hash_neighbours():
+                # Store neighbours into persistent storage if there was a change
+                self._store_neighbours(logger)
+
             self.leader = msg['sender']
-            logger.warning('Accepted leader %s | %s', self._term, msg['sender'])
-        self._failed_elections = 0
+            self.state = STATE_FOLLOWER if self.address in self.neighbour().neighbours else STATE_ORPHAN
+            self._term = msg['term']
+            self._timeout_time = _next_timeout(self.state, 0, self._election_timeout, self._heartbeat_timeout)
+        else:
+            # If there is a majority of neighbours that have accepted the pending neighbour
+            for pending_neighbour in [n for n in self._neighbours.values() if n.membership == MEMBERSHIP_JOINING]:
+                count = sum([1 for n in self.neighbours.values() if pending_neighbour.address in n.neighbours])
+                if self.is_majority(1 + count) and pending_neighbour.msg:
+                    pending_neighbour.membership = MEMBERSHIP_ACTIVE
+                    self.queue_msg(_rpc_response(pending_neighbour.msg, self.neighbourhood))
+                    logger.info('Node joined cluster %s', pending_neighbour.address)
+                    pending_neighbour.msg = None
+                    self._store_neighbours(logger)
 
     def _handle_rpc_vote_request(self, msg, logger: logging.Logger):
         """ Handles RPC ``VOTE_REQUEST``. """
         # If the vote is from an old term or we are a candidate
         if msg['term'] < self._term or self.state in {STATE_CANDIDATE, STATE_LEADER}:
             response = False
-            self.queue_msg(_rpc_response(msg, self._term, response))
+            self.queue_msg(_rpc_response(msg, response))
 
         # If we have voted in this term
         elif self._term in self._elections and self.address in self._elections[self._term]:
             response = self._elections[self._term][self.address] == msg['sender']
-            self.queue_msg(_rpc_response(msg, self._term, response))
+            self.queue_msg(_rpc_response(msg, response))
             self._timeout_time = _next_timeout(self.state, 0, self._election_timeout, self._heartbeat_timeout)
 
         else:
             response = True
             self._elections[self._term] = {self.address: msg['sender']}
-            self.queue_msg(_rpc_response(msg, self._term, response))
+            self.queue_msg(_rpc_response(msg, response))
             self._timeout_time = _next_timeout(self.state, 0, self._election_timeout, self._heartbeat_timeout)
 
         logger.debug('Voted for %s in term %d: %r', msg['sender'], msg['term'], response)
@@ -739,6 +931,51 @@ class RaftNode(Node):
         if self.is_majority(sum(1 for _ in filter(None, self._elections[self._term].values()))):
             self._handle_inauguration(logger)
 
+    def _handle_rpc_cluster_join_request(self, msg, logger: logging.Logger):
+        # If we are not the leader - reject the request
+        if not self.is_leader():
+            self.queue_msg(_rpc_response(msg, False))
+        # If we are the only member of the cluster - immediately add sender
+        elif len(self.neighbours) == 0:
+            self._neighbours[msg['sender']].membership = MEMBERSHIP_ACTIVE
+            self.queue_msg(_rpc_response(msg, self.neighbourhood))
+            logger.info('Node joined cluster %s', msg['sender'])
+            self._store_neighbours(logger)
+        # If there are multiple members add the sender to the pending members set
+        else:
+            self._neighbours[msg['sender']].membership = MEMBERSHIP_JOINING
+            self._neighbours[msg['sender']].founder = False
+            self._neighbours[msg['sender']].msg = msg
+
+    def _handle_rpc_cluster_join_response(self, msg, logger: logging.Logger):
+        if not msg['response']:
+            # Extend timeout to wait for an election timeout
+            self._timeout_time = time.time() + (2 * self._election_timeout)
+        else:
+            for neighbour in msg['response']:
+                if neighbour != self.address:
+                    self._neighbours.setdefault(neighbour, RaftNeighbour(neighbour, False, MEMBERSHIP_ACTIVE))
+            self._store_neighbours(logger)
+            logger.info('Accepted into cluster')
+            self._timeout_time = time.time() + (2 * self._election_timeout)
+            self.state = STATE_FOLLOWER
+
+    def _handle_rpc_cluster_leave_request(self, msg, logger: logging.Logger):
+        # If the sender is a member of the cluster
+        if msg['sender'] in self.neighbours:
+            # Mark the neighbour as leaving the cluster
+            self._neighbours[msg['sender']].membership = MEMBERSHIP_LEAVING
+            logger.info('Node leaving cluster %s', msg['sender'])
+            self._store_neighbours(logger)
+
+        self.queue_msg(_rpc_response(msg, True))
+
+    def _handle_rpc_cluster_leave_response(self, msg, logger: logging.Logger):
+        # If the sender accepted our leave request
+        if msg['response']:
+            self._terminate.set()
+            logger.info('%s accepted leave request', msg['sender'])
+
     def _handle_inauguration(self, logger: logging.Logger) -> None:
         """ Handles node inauguration. """
         self.state = STATE_LEADER
@@ -751,11 +988,12 @@ class RaftNode(Node):
 
 
 class History(OrderedDict):
-    """ An ordered dictionary with a maximum size. """
+    """
+    An ordered dictionary with a maximum size.
+
+    :param maxsize: Maximum size of the ordered dictionary
+    """
     def __init__(self, maxsize: int = 128, *args, **kwargs):
-        """
-        :param maxsize: Maximum size of the ordered dictionary
-        """
         self.maxsize = maxsize
         self._total = 0
         self._tail = None
@@ -798,6 +1036,7 @@ if __name__ == '__main__':
     formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)-8s - %(message)s')
     ch.setFormatter(formatter)
     raft_logger.addHandler(ch)
+    raft_logger.setLevel(logging.INFO)
 
     port = int(sys.argv[1])
     raft_node = RaftNode(f'localhost:{int(port)}', [f'localhost:{int(p)}' for p in sys.argv[2:]], 0.5, 0.1)

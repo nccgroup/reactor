@@ -91,6 +91,8 @@ t:integration:5.6.16:
   extends: .cache_template
   stage: test
   except:
+    refs:
+      - /(^|\/)feature\/.*$/
     variables:
       - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
@@ -107,6 +109,8 @@ t:integration:6.3.0:
   extends: .cache_template
   stage: test
   except:
+    refs:
+      - /(^|\/)feature\/.*$/
     variables:
       - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
@@ -123,6 +127,8 @@ t:integration:6.8.2:
   extends: .cache_template
   stage: test
   except:
+    refs:
+      - /(^|\/)feature\/.*$/
     variables:
       - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:
@@ -139,6 +145,8 @@ t:integration:7.3.0:
   extends: .cache_template
   stage: test
   except:
+    refs:
+      - /(^|\/)feature\/.*$/
     variables:
       - $CI_MERGE_REQUEST_TITLE =~ /^WIP/
   dependencies:

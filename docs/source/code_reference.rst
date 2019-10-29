@@ -48,7 +48,7 @@ Exceptions
 .. autoexception:: reactor.exceptions.QueryException
 
 
-.. autoexception:: reactor.exceptions.ClusterException
+.. autoexception:: reactor.cluster.ClusterException
 
 
 .. autoexception:: reactor.enhancement.DropAlertException
