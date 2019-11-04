@@ -6,7 +6,8 @@ Code Reference
 
 .. autoclass:: reactor.cluster.RaftNode
     :member-order: bysource
-    :members: is_leader, has_leader, neighbours, neighbourhood, set_ssl, start, shutdown, meta, leader_meta
+    :inherited-members:
+    :members: is_leader, has_leader, neighbours, neighbourhood, set_ssl, start, shutdown, meta, member, address
 
 .. autoclass:: reactor.console.Console
     :members: run

@@ -163,34 +163,56 @@ def _rpc_is_request(msg: dict) -> bool:
     return msg['rpc'] > 0
 
 
-class ReduceClassEncoder(json.JSONEncoder):
+class ClassEncoder(json.JSONEncoder):
     def default(self, o):
-        if hasattr(o, '__reduce__'):
+        if hasattr(o, '__reduce__') and o.__class__.__name__ in (Neighbour.__name__, RaftNeighbour.__name__):
             r = o.__reduce__()
-            return {'__class__': f'{r[0].__name__}',
+            return {'__class__': r[0].__name__,
                     '__args__': r[1]}
+        if isinstance(o, set):
+            return list(o)
         return super().default(o)
 
     @staticmethod
     def object_hook(json_object):
-        if json_object.get('__class__') == 'RaftNeighbour':
+        if json_object.get('__class__') == Neighbour.__name__:
+            return Neighbour(*json_object['__args__'])
+        if json_object.get('__class__') == RaftNeighbour.__name__:
             return RaftNeighbour(*json_object['__args__'])
+        if json_object.get('__class__'):
+            raise TypeError(f"Unrecognised class {json_object['__class__']}")
         return json_object
 
 
-class Neighbour(object):
+class BaseNode(object):
     """
-    This is the base class for all cluster neighbours. It should be used to store neighbour specific information that
-    such as ``id``, ``address``, or ``meta`` data.
+    The base class for all cluster nodes.
 
-    :param address: Address of the neighbour node
+    :param address: Address of the node
     """
     def __init__(self, address: str):
         self.address = address
+        """ Address of the node. """
+
         self.meta = {}
+        """ Meta data of the node. """
+
+    def __str__(self):
+        return self.address
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}[address={self.address}]'
 
 
-class Node(object):
+class Neighbour(BaseNode):
+    """
+    This is the base class for all cluster neighbours. It should be used to store neighbour specific information.
+    """
+    def __reduce__(self):
+        return Neighbour, (self.address,)
+
+
+class Node(BaseNode):
     """
     This class is the base class for all cluster node implementations. This class is used by Reactor in the case where
     no cluster is specified. The class assumes it is the leader immediately
@@ -199,12 +221,11 @@ class Node(object):
     :param neighbours: List of addresses
     """
     def __init__(self, address: str, neighbours: list = None, neighbour_class=Neighbour):
+        super().__init__(address)
         self.changed = time.time()
         self.leader = address
-        self.address = address
         self._neighbours = {n: neighbour_class(n) for n in neighbours or [] if n != address}
-
-        self._meta = {}
+        self._neighbour_class = neighbour_class
 
     def is_leader(self) -> bool:
         """ Return whether the RaftNode is the leader of the cluster. """
@@ -236,25 +257,9 @@ class Node(object):
         """
         pass
 
-    @property
-    def meta(self) -> dict:
-        """
-        Returns the meta data of the node. Meta data is sent with every message to neighbouring nodes and stored.
-        """
-        return self._meta
-
-    def leader_meta(self) -> dict:
-        """ Returns the meta data of the cluster leader. """
-        if self.is_leader():
-            return self._meta
-        elif self.has_leader():
-            return self.neighbours[self.leader].meta
-        else:
-            return {}
-
-    def neighbour(self, address: str = None) -> Optional[Neighbour]:
-        """ Return the neighbour with ``address`` or the leader. """
-        return self._neighbours.get(address or self.leader)
+    def member(self, address: str) -> Optional[BaseNode]:
+        """ Return the cluster member with ``address``. """
+        return self if address == self.address else self._neighbours.get(address)
 
 
 class ClusterException(Exception):
@@ -288,7 +293,7 @@ class RaftNeighbour(Neighbour):
         self.neighbours = []
 
     def __reduce__(self):
-        return self.__class__, (self.address, self.founder, self.membership, self.ping.maxlen)
+        return RaftNeighbour, (self.address, self.founder, self.membership, self.ping.maxlen)
 
     def append_queued(self, msg: dict) -> None:
         """ Append a message to the queued history. """
@@ -415,6 +420,7 @@ class RaftNode(Node):
 
     @property
     def neighbours(self) -> Dict[str, RaftNeighbour]:
+        """ Returns a dictionary of active members of the cluster. """
         return {a: n for a, n in self._neighbours.items() if n.membership == MEMBERSHIP_ACTIVE}
 
     def is_majority(self, count: int, strong: bool = True) -> bool:
@@ -580,7 +586,7 @@ class RaftNode(Node):
             try:
                 while len(buffer) < msg_len:
                     buffer += sock.recv(min(255, msg_len-len(buffer)))
-                return json.loads(buffer, object_hook=ReduceClassEncoder.object_hook)
+                return json.loads(buffer, object_hook=ClassEncoder.object_hook)
             except socket.timeout:
                 pass
         return None
@@ -611,7 +617,7 @@ class RaftNode(Node):
                     sock = self._wrap_socket(sock, recipient.split(':', 2)[0])
                     pool[recipient] = sock
 
-                msg_body = json.dumps(msg, cls=ReduceClassEncoder).encode('utf-8')
+                msg_body = json.dumps(msg, cls=ClassEncoder).encode('utf-8')
                 msg_header = struct.pack(MSG_HEADER_FORMAT, len(msg_body))
                 buffer = msg_header + msg_body
                 pool[recipient].sendall(buffer)
@@ -803,13 +809,13 @@ class RaftNode(Node):
         with open(f'{self.address}.json', 'w') as fh:
             neighbours = [{'address': self.address, 'founder': self._founder}]
             neighbours += [{'address': n.address, 'founder': n.founder} for n in self.neighbours.values()]
-            json.dump(neighbours, fh, cls=ReduceClassEncoder)
+            json.dump(neighbours, fh, cls=ClassEncoder)
             logger.debug('Updating persistent storage')
 
     def _load_neighbours(self):
         try:
             with open(f'{self.address}.json', 'r') as fh:
-                neighbours = json.load(fh, object_hook=ReduceClassEncoder.object_hook)
+                neighbours = json.load(fh, object_hook=ClassEncoder.object_hook)
                 self._state = STATE_FOLLOWER
                 for n in neighbours:
                     if n['address'] == self.address:
@@ -880,16 +886,16 @@ class RaftNode(Node):
                 self._store_neighbours(logger)
 
             self.leader = msg['sender']
-            self.state = STATE_FOLLOWER if self.address in self.neighbour().neighbours else STATE_ORPHAN
+            self.state = STATE_FOLLOWER if self._founder or self.address in self.member(self.leader).neighbours else STATE_ORPHAN
             self._term = msg['term']
             self._timeout_time = _next_timeout(self.state, 0, self._election_timeout, self._heartbeat_timeout)
         else:
             # If there is a majority of neighbours that have accepted the pending neighbour
             for pending_neighbour in [n for n in self._neighbours.values() if n.membership == MEMBERSHIP_JOINING]:
                 count = sum([1 for n in self.neighbours.values() if pending_neighbour.address in n.neighbours])
-                if self.is_majority(1 + count) and pending_neighbour.msg:
+                if self.is_majority(1 + count) and isinstance(pending_neighbour.msg, dict):
                     pending_neighbour.membership = MEMBERSHIP_ACTIVE
-                    self.queue_msg(_rpc_response(pending_neighbour.msg, self.neighbourhood))
+                    self.queue_msg(_rpc_response(pending_neighbour.msg, True))
                     logger.info('Node joined cluster %s', pending_neighbour.address)
                     pending_neighbour.msg = None
                     self._store_neighbours(logger)
@@ -938,7 +944,7 @@ class RaftNode(Node):
         # If we are the only member of the cluster - immediately add sender
         elif len(self.neighbours) == 0:
             self._neighbours[msg['sender']].membership = MEMBERSHIP_ACTIVE
-            self.queue_msg(_rpc_response(msg, self.neighbourhood))
+            self.queue_msg(_rpc_response(msg, True))
             logger.info('Node joined cluster %s', msg['sender'])
             self._store_neighbours(logger)
         # If there are multiple members add the sender to the pending members set
@@ -952,7 +958,7 @@ class RaftNode(Node):
             # Extend timeout to wait for an election timeout
             self._timeout_time = time.time() + (2 * self._election_timeout)
         else:
-            for neighbour in msg['response']:
+            for neighbour in msg['neighbours']:
                 if neighbour != self.address:
                     self._neighbours.setdefault(neighbour, RaftNeighbour(neighbour, False, MEMBERSHIP_ACTIVE))
             self._store_neighbours(logger)
@@ -996,30 +1002,32 @@ class History(OrderedDict):
     def __init__(self, maxsize: int = 128, *args, **kwargs):
         self.maxsize = maxsize
         self._total = 0
-        self._tail = None
         super().__init__(*args, **kwargs)
 
     def __setitem__(self, key, value) -> None:
         super().__setitem__(key, value)
         self._total += 1
-        self._tail = key
         if len(self) > self.maxsize:
             self.popitem(False)
 
     def __delitem__(self, key) -> None:
+        if len(self) <= self.maxsize:
+            self._total -= 1
         super().__delitem__(key)
-        self._total -= 1
-        self._tail = deque(self, maxlen=1).pop() if len(self) else None
+
+    def clear(self) -> None:
+        super().clear()
+        self._total = 0
 
     @property
-    def head(self):
+    def head(self) -> Optional[any]:
         """ The least recently added key. """
-        return next(iter(self))
+        return next(iter(self.keys())) if len(self) else None
 
     @property
-    def tail(self):
+    def tail(self) -> Optional[any]:
         """ The most recently added key. """
-        return self._tail
+        return next(iter(reversed(self.keys()))) if len(self) else None
 
     @property
     def total(self) -> int:
