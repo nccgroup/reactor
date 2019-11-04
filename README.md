@@ -7,10 +7,10 @@ Reactor is an alerting engine which takes in a set of rules with custom filters 
 Reactor automatically updates silenced alerts with repeat alert information.
 
 #### Patch history from ElastAlert
-| Date       | Commit                                   | Notes                                             |
-|------------|------------------------------------------|---------------------------------------------------|
-| 2019-10-16 | 325f1dfe7a45f3ca2a2cc00127ab71fcd4f9cead | Went back until before Reactor was first created. |
-|            |                                          |                                                   |
+| Date accessed | Commit                                   | Notes                                             |
+|---------------|------------------------------------------|---------------------------------------------------|
+| 2019-10-16    | 325f1dfe7a45f3ca2a2cc00127ab71fcd4f9cead | Went back until before Reactor was first created. |
+|               |                                          |                                                   |
 
 
 ## Supported Versions

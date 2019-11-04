@@ -298,11 +298,19 @@ class Reactor(object):
 
             # Get our list of rules
             distributed_rules = []
-            if self.cluster.has_leader():
-                meta = self.cluster.leader_meta()
-                distributed_rules = meta.get('rules', {}).get(self.cluster.address, [])
+            leader = self.cluster.member(self.cluster.leader)
+            if leader is not None:
+                distributed_rules = leader.meta.get('rules', {}).get(self.cluster.address, [])
             if self.cluster_info['rules'] != distributed_rules:
-                reactor_logger.info('Rule set updated: %s', distributed_rules)
+                # Clear the caches for any changed rules
+                for rule in set(self.cluster_info['rules']) ^ set(distributed_rules):
+                    if rule in self.cluster.meta['executing']:
+                        continue
+                    self.loader[rule].data = reactor.rule.WorkingData(self.loader[rule].data.ts_field)
+
+                reactor_logger.info('Rule set updated: +%s -%s',
+                                    (set(distributed_rules) - set(self.cluster_info['rules'])) or '{}',
+                                    (set(self.cluster_info['rules']) - set(distributed_rules)) or '{}')
             self.cluster_info['rules'] = distributed_rules
 
             # Remove removed rules from the scheduler
