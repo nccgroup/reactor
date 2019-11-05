@@ -1,6 +1,7 @@
 stages:
   - build
   - test
+  - deploy
 
 image: python:3.6
 
@@ -159,3 +160,21 @@ t:integration:7.3.0:
     ES_JAVA_OPTS: "-Xms512m -Xmx512m"
   script:
     - ./tests/integration/test.sh
+
+
+d:publish:
+  stage: deploy
+  only:
+    - tags
+  before_script:
+    - python -V
+    - pip install virtualenv
+    - virtualenv venv
+    - source venv/bin/activate
+    - pip install --upgrade setuptools wheel
+    - pip install --upgrade twine
+    - mv .pypirc ~/.pypirc
+  script:
+    - python3 setup.py sdist bdist_wheel
+    - twine check dist/*
+    - twine upload -r ncc dist/* --verbose --cert /etc/ssl/certs/ca-certificates.crt
