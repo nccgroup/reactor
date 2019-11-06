@@ -847,6 +847,8 @@ class RaftNode(Node):
             return
         # If msg has a response
         elif msg['response']:
+            if msg['response'] not in self._neighbours:
+                self._neighbours[msg['response']] = msg['neighbours'][msg['response']]
             # Send RPC_CLUSTER_JOIN request to leader
             self.queue_msg(_rpc_request(RPC_CLUSTER_JOIN, msg['response']))
             # Extend timeout to wait for an election timeout
@@ -865,6 +867,7 @@ class RaftNode(Node):
             self.queue_msg(_rpc_response(msg, response))
             if response and self.leader != msg['sender']:
                 self.leader = msg['sender']
+                self._neighbours[msg['sender']].membership = MEMBERSHIP_ACTIVE
                 logger.warning('Accepted leader %s | %s', self._term, msg['sender'])
 
             self._failed_elections = 0
