@@ -53,7 +53,7 @@ do
 	match=()
 	match[0]="version='$version'"
 	match[1]="__version__ = '$version'"
-	match[2]="version = '$version'"
+	match[2]="release = '$version'"
 	for idx in ${!files[*]}; do
 		# Pipe the contents of the file through grep to check for a match
 		git show $local_sha:${files[$idx]} | grep -q "${match[$idx]}"
