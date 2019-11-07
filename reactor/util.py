@@ -164,18 +164,27 @@ def env_constructor(loader: yaml.BaseLoader, node: yaml.nodes.Node) -> any:
     value = loader.construct_scalar(node)
     match = env_matcher.match(value)
     env_name = match.group(1)
-    env_default = None
-    if match.group(2) is not None:
+    env_value = os.environ.get(env_name, None)
+
+    # If there is a matching environment variable
+    if env_value is not None:
+        # Detect the type of the env value and construct the object
+        tag = loader.resolve(yaml.nodes.ScalarNode, env_value, (True, False))
+        default_node = yaml.nodes.ScalarNode(tag, env_value)
+        env_value = loader.construct_object(default_node)
+
+    # Otherwise, if there is a default value provided
+    elif match.group(2) is not None:
         env_default = match.group(2)[1:]
         # Detect the type of the env default and construct the object
         tag = loader.resolve(yaml.nodes.ScalarNode, env_default, (True, False))
         default_node = yaml.nodes.ScalarNode(tag, env_default)
-        env_default = loader.construct_object(default_node)
+        env_value = loader.construct_object(default_node)
         # If this value is quoted with single or double quotes
-        if isinstance(env_default, str) and env_default[0] == env_default[-1] and env_default[0] in ['"', "'"]:
-            env_default = env_default[1:-1]
+        if isinstance(env_value, str) and env_value[0] == env_value[-1] and env_value[0] in ['"', "'"]:
+            env_value = env_value[1:-1]
 
-    return os.environ.get(env_name, env_default)
+    return env_value
 
 
 def generate_id() -> str:
