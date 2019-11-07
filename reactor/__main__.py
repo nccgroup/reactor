@@ -8,6 +8,7 @@ import traceback
 import urllib3
 
 import reactor.plugin as reactor_plugin
+from reactor import __version__
 from reactor.alerter import TestAlerter, BasicHitString
 from reactor.config import parse_config
 from reactor.exceptions import ReactorException, ConfigException
@@ -96,12 +97,17 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
                           help='Format to output the alerts')
 
     # Define the sub parsers
-    parser = argparse.ArgumentParser('reactor')
+    parser = argparse.ArgumentParser('reactor',
+                                     description='An alerting engine powered by Elasticsearch')
     parser.set_defaults(action=None)
+    parser.add_argument('-V', '--version',
+                        action='version',
+                        version=f'%(prog)s v{__version__}')
     sub_parser = parser.add_subparsers(title='actions')
 
     # Normal run
     run_sp = sub_parser.add_parser('run', parents=[config, patience, timestamps, disable_warnings],
+                                   description='Start execution of the alerting engine',
                                    help='Run the reactor client')
     run_sp.set_defaults(action='run')
     run_sp_group = run_sp.add_mutually_exclusive_group()
@@ -145,6 +151,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     # Initialise command
     init_sp = sub_parser.add_parser('init', parents=[config, patience, disable_warnings],
+                                    description='Initialise the alerting engine',
                                     help='Initialise the reactor indices and templates')
     init_sp.set_defaults(action='init')
     init_sp.add_argument('-m', '--mappings',
@@ -162,6 +169,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     # Validate command
     test_sp = sub_parser.add_parser('validate', parents=[config],
+                                    description='Validate the configuration of a set of rules',
                                     help='Validate the specified rules')
     test_sp.set_defaults(action='validate', mode='test')
     test_sp.add_argument('rules',
@@ -170,6 +178,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     # Test command
     test_sp = sub_parser.add_parser('test', parents=[config, patience, run_rule, disable_warnings],
+                                    description='Test the configuration of a set of rules',
                                     help='Test the specified rules')
     test_sp.set_defaults(action='test', mode='test')
     test_sp.add_argument('rules',
@@ -178,6 +187,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     # Hits command
     hits_sp = sub_parser.add_parser('hits', parents=[config, patience, run_rule, disable_warnings],
+                                    description='Retrieve the hits for a specified rule',
                                     help='Retrieve the hits for the specified rule')
     hits_sp.set_defaults(action='hits', mode='test')
     hits_sp.add_argument('--counts',
@@ -188,6 +198,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     # Console command
     console_sp = sub_parser.add_parser('console', parents=[config, patience, disable_warnings],
+                                       description='Start debugging console',
                                        help='Start the reactor console')
     console_sp.set_defaults(action='console')
     console_sp.add_argument('-i', '--index',
@@ -206,6 +217,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
 
     # Silence command
     silence_sp = sub_parser.add_parser('silence', parents=[config, patience, disable_warnings],
+                                       description='Silence a set of rules',
                                        help='Silence a set of rules')
     silence_sp.set_defaults(action='silence')
     silence_sp.add_argument('rules',
