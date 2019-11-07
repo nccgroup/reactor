@@ -137,7 +137,7 @@ d:docs:
   only:
     - tags
   script:
-    - pip install -r requirements-docs.txt
+    - pip install -r requirements-docs.txt -e .
     - cd docs
     - sphinx-build -b html -d build/doctrees -W source build/html
   artifacts:
