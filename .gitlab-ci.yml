@@ -27,10 +27,7 @@ before_script:
   tags:
     - code
   only:
-    - branches
     - merge_requests
-  except:
-    - /(^|\/)feature\/.*$/
 
 
 b:reactor:
@@ -45,18 +42,6 @@ b:reactor:
       - .cache/pip
       - venv/
     policy: push
-
-b:docs:
-  stage: build
-  only:
-    - tags
-  script:
-    - pip install -r requirements-docs.txt
-    - cd docs
-    - sphinx-build -b html -d build/doctrees -W source build/html
-  artifacts:
-    paths:
-    - docs/build/html/**
 
 
 t:unit:
@@ -145,6 +130,19 @@ t:integration:7.3.0:
     - pip install -r requirements.txt -e .
     - ./tests/integration/test.sh
 
+
+
+d:docs:
+  stage: deploy
+  only:
+    - tags
+  script:
+    - pip install -r requirements-docs.txt
+    - cd docs
+    - sphinx-build -b html -d build/doctrees -W source build/html
+  artifacts:
+    paths:
+    - docs/build/html/**
 
 d:publish:
   stage: deploy
