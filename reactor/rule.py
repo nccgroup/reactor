@@ -577,9 +577,9 @@ class Rule(object):
                                             size=min(self.max_hits-self._data.num_hits, self.conf('max_query_size')),
                                             body=query, ignore_unavailable=True, **extra_args)
                 if self.es_client.es_version_at_least(7):
-                    self._data.total_hits = int(res['hits']['total']['value'])
+                    self._data.total_hits += int(res['hits']['total']['value'])
                 else:
-                    self._data.total_hits = int(res['hits']['total'])
+                    self._data.total_hits += int(res['hits']['total'])
 
             if len(res.get('shards', {}).get('failures', [])) > 0:
                 try:
