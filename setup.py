@@ -7,7 +7,7 @@ with open('requirements.txt', 'r') as fh:
     install_requirements = fh.read().split()
 setuptools.setup(
     name='reactor',
-    version='1.0.2',
+    version='1.0.3',
     author='Peter Scopes',
     author_email='peter.scopes@nccgroup.com',
     maintainer='Peter Scopes',
