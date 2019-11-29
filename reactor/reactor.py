@@ -1213,6 +1213,8 @@ class Core(object):
                 'start_time': rule.data.original_start_time,
                 'matches': rule.data.num_matches,
                 'hits': max(rule.data.num_hits, rule.data.cumulative_hits),
+                'alerts_sent': rule.data.alerts_sent,
+                'alerts_silenced': rule.data.alerts_silenced,
                 '@timestamp': dt_now(),
                 'time_taken': rule.data.time_taken}
         self.writeback('status', body)
