@@ -304,7 +304,7 @@ class Reactor(object):
             if self.cluster_info['rules'] != distributed_rules:
                 # Clear the caches for any changed rules
                 for rule in set(self.cluster_info['rules']) ^ set(distributed_rules):
-                    if rule in self.cluster.meta['executing']:
+                    if rule in self.cluster.meta['executing'] or rule not in self.loader:
                         continue
                     self.loader[rule].data = reactor.rule.WorkingData(self.loader[rule].data.ts_field)
 
