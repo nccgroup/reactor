@@ -73,7 +73,7 @@ class HttpServerPlugin(BasePlugin):
         def do_GET(self):
             if self.path == '/':
                 reactor = self.server.reactor  # type: Reactor
-                response = {'up_time': time.monotonic(),
+                response = {'up_time': time.time() - reactor.up_time,
                             'cluster': {'size': len(reactor.cluster.neighbourhood),
                                         'leader': reactor.cluster.leader,
                                         'neighbourhood': list(reactor.cluster.neighbourhood),

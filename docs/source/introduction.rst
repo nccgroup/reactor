@@ -352,7 +352,7 @@ JSON encoded response, e.g.:
     }
 
 where:
-``up_time`` is the monotonic time since Reactor started;
+``up_time`` is the number of seconds since Reactor started;
 ``cluster.size`` is the number of nodes in the cluster;
 ``cluster.leader`` is the currently elected cluster leader;
 ``cluster.neighbourhood`` is the list of all nodes in the cluster;

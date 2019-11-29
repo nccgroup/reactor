@@ -62,6 +62,7 @@ class Reactor(object):
         self.writeback_index = conf['writeback_index']
         self.alert_alias = conf['alert_alias']
 
+        self.up_time = 0
         self.start_time = args.get('start', dt_now())
         self.scheduler = apscheduler.schedulers.background.BackgroundScheduler()
         self.terminate_called = 0
@@ -155,6 +156,9 @@ class Reactor(object):
         if not self.es_client.es_version_at_least(5):
             reactor_logger.fatal('Unsupported version of ElasticSearch: %s', self.es_client.es_version)
             return 2
+
+        # Keep track of when reactor was started
+        self.up_time = time.time()
 
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         reactor_logger.info('Starting up (max_processpool=%s cluster_size=%s)',
