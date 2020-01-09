@@ -10,6 +10,7 @@ Reactor automatically updates silenced alerts with repeat alert information.
 | Date accessed | Commit                                   | Notes                                             |
 |---------------|------------------------------------------|---------------------------------------------------|
 | 2019-10-16    | 325f1dfe7a45f3ca2a2cc00127ab71fcd4f9cead | Went back until before Reactor was first created. |
+| 2020-01-09    | ec5d03b95708ea0aa3d29c065f9794fdd95a82a1 | We do not use coverage.                           |
 |               |                                          |                                                   |
 
 
