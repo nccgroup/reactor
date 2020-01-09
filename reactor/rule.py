@@ -592,8 +592,6 @@ class Rule(object):
                     # whole thing
                     raise elasticsearch.ElasticsearchException(str(res['_shard']['failures']))
 
-            reactor_logger.debug(str(res))
-
         except elasticsearch.ElasticsearchException as e:
             # ElasticSearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
