@@ -15,6 +15,6 @@ class QueryException(ReactorException):
 
     :param query: Search body sent to Elasticsearch
     """
-    def __init__(self, query, *args, **kwargs):
+    def __init__(self, *args, query, **kwargs):
         super().__init__(*args, **kwargs)
         self.query = query
