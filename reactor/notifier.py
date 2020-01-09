@@ -118,4 +118,4 @@ class EmailNotifier(BaseNotifier):
             if smtp:
                 smtp.close()
 
-        reactor_logger.info("Sent email to %s" % to_addr)
+        reactor_logger.info("Sent email to %s", to_addr)

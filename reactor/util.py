@@ -425,7 +425,7 @@ def ts_to_dt(timestamp) -> datetime.datetime:
 
 def dt_to_ts(dt) -> str:
     if not isinstance(dt, datetime.datetime):
-        reactor_logger.warning('Expected datetime, got %s' % (type(dt)))
+        reactor_logger.warning('Expected datetime, got %s', type(dt))
         return dt
     ts = dt.isoformat()
     # Round microseconds to milliseconds

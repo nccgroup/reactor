@@ -232,7 +232,7 @@ class Reactor(object):
             reactor_logger.info('Removing jobs from scheduler')
             self.scheduler.remove_all_jobs()
 
-            reactor_logger.info('Waiting for running jobs to complete (%s)' % len(self.cluster.meta['executing']))
+            reactor_logger.info('Waiting for running jobs to complete (%s)', len(self.cluster.meta['executing']))
             self.scheduler.shutdown()
 
             reactor_logger.info('Shutdown complete!')
@@ -517,7 +517,7 @@ class Core(object):
                 suffix = datetime.datetime.utcnow().strftime(suffix)
                 writeback_index += '_' + suffix
             except KeyError as e:
-                reactor_logger.critical('Failed to add suffix. Unknown key %s' % str(e))
+                reactor_logger.critical('Failed to add suffix. Unknown key %s', str(e))
 
         return writeback_index
 
@@ -532,7 +532,7 @@ class Core(object):
 
         index = self.get_writeback_index(doc_type, rule=rule, match_body=writeback_body.get('match_body'))
         if self.mode in ['debug', 'test']:
-            reactor_logger.debug('Skipping writing to ElasticSearch "%s": %s' % (index, writeback_body))
+            reactor_logger.debug('Skipping writing to ElasticSearch "%s": %s', index, writeback_body)
             return None
 
         # Add the alert to the cache
@@ -556,7 +556,7 @@ class Core(object):
             else:
                 return self.es_client.index(id=doc_id, index=index, doc_type=doc_type, body=writeback_body)
         except elasticsearch.ElasticsearchException as e:
-            reactor_logger.exception('Error writing alert info to ElasticSearch: %s' % e)
+            reactor_logger.exception('Error writing alert info to ElasticSearch: %s', e)
 
     def flush_writeback(self):
         """ Flush the thread local `writeback_cache` and clear. """
@@ -1320,7 +1320,7 @@ class Core(object):
             if res['hits']['hits']:
                 return res['hits']['hits']
         except elasticsearch.ElasticsearchException as e:
-            reactor_logger.exception('Error finding recent pending alerts: %s %s' % (e, query))
+            reactor_logger.exception('Error finding recent pending alerts: %s %s', e, query)
         return []
 
     def get_aggregated_alerts(self, _id):

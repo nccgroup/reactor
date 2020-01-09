@@ -437,7 +437,7 @@ class EmailAlerter(Alerter):
             if smtp:
                 smtp.close()
 
-        reactor_logger.info("Sent email to %s" % to_addr)
+        reactor_logger.info("Sent email to %s", to_addr)
 
     def get_info(self):
         return {'type': 'email',

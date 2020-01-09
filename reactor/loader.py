@@ -295,9 +295,8 @@ class RuleLoader(object):
             for token in ['%y', '%M', '%D']:
                 if token in rule.conf('writeback_index'):
                     reactor_logger.warning('Did you mean to use %s in the index?'
-                                           'The index will for formatted like %s' % (token,
-                                                                                     datetime.datetime.now().strftime(
-                                                                                         rule.conf('writeback_index'))))
+                                           'The index will for formatted like %s',
+                                           token, datetime.datetime.now().strftime(rule.conf('writeback_index')))
 
     @staticmethod
     def load_modules(rule: Rule, mappings: dict) -> None:

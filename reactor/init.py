@@ -20,7 +20,7 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
     if not recreate:
         index = conf['writeback_index'] + '_alert' if es_client.es_version_at_least(6) else conf['writeback_index']
         if es_index.exists(index):
-            reactor_logger.warning('Index %s already exists. Skipping index creation.' % index)
+            reactor_logger.warning('Index %s already exists. Skipping index creation.', index)
             return None
     elif not force:
         if not query_yes_no("Recreating indices will delete ALL existing data. Are you sure you want to recreate?"):
@@ -29,7 +29,7 @@ def create_indices(es_client: ElasticSearchClient, conf: dict, recreate=False, o
 
     if es_index.exists_template(conf['writeback_index']):
         reactor_logger.info('Template %s already exists.'
-                            ' Deleting in preparation for creating indices.' % conf['writeback_index'])
+                            ' Deleting in preparation for creating indices.', conf['writeback_index'])
         es_index.delete_template(conf['writeback_index'])
 
     # (Re-)Create indices.
