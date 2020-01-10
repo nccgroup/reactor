@@ -156,7 +156,7 @@ def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
     init_sp.set_defaults(action='init')
     init_sp.add_argument('-m', '--mappings',
                          dest='mappings_dir',
-                         help='Path to the directory containing the mapping JSON files')
+                         help='Path to the directory containing the mappings JSON files')
     init_sp.add_argument('--recreate',
                          action='store_true',
                          help='Recreated the indices and template')
@@ -251,7 +251,7 @@ def perform_init(config: dict, args: dict) -> int:
         return 2
 
     from reactor.init import create_indices
-    create_indices(es_client, config, args['recreate'], args['old_index'], args['force'])
+    create_indices(es_client, config, args['recreate'], args['force'], args['old_index'], args['mappings_dir'])
     return 0
 
 

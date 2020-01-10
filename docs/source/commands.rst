@@ -163,7 +163,7 @@ Initialise Reactor
       --patience units=val  Maximum time to wait for ElasticSearch to become
                             responsive (e.g. seconds=30)
       -m MAPPINGS_DIR, --mappings MAPPINGS_DIR
-                            Path to the directory containing the mapping JSON
+                            Path to the directory containing the mappings JSON
                             files
       --recreate            Recreated the indices and template
       -f, --force           Force recreation of indices (no user prompt)
