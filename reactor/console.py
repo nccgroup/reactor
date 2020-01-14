@@ -98,7 +98,7 @@ class Console(object):
         self.refresh = timedelta(seconds=self.reactor.args['refresh']) if self.reactor.args['refresh'] else None
 
         index = None if reactor.args['index'] == 'indices' else reactor.args['index']
-        self.display = {'index': self.reactor.core.get_writeback_index(index) if index else None,
+        self.display = {'index': self._get_index(index) if index else None,
                         'type': reactor.args['index'],
                         'item': None,
                         'offset': 0,
@@ -225,7 +225,7 @@ class Console(object):
                     if self.display['type'] == 'indices':
                         self.display['index'] = item['index']
                         for index_type in ['alert', 'error', 'silence', 'status']:
-                            if self.display['index'].startswith(self.reactor.core.get_writeback_index(index_type)):
+                            if self.display['index'].startswith(self._get_index(index_type)):
                                 self.display['type'] = 'alerts' if index_type == 'alert' else index_type
                         if self.display['type'] == 'indices':
                             self.display['index'] = None
@@ -287,9 +287,15 @@ class Console(object):
 
             self._is_terminated.wait(0.01)
 
+    def _get_index(self, index_type: str) -> str:
+        if index_type == 'alerts':
+            return self.reactor.conf['alert_alias']
+
+        return self.reactor.core.get_writeback_index(index_type)
+
     def _switch_view(self, index_name: str = None, index_type: str = None):
         if not index_name and index_type != 'indices':
-            index_name = self.reactor.core.get_writeback_index(index_type)
+            index_name = self._get_index(index_type)
         self.display['index'] = index_name
         self.display['type'] = index_type or 'alerts'
         self.display['item'] = None
