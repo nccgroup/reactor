@@ -57,6 +57,7 @@ class Reactor(object):
         self.conf = conf
         self.args = args
         self.loader = conf['loader']  # type: RuleLoader
+        self.reload = False
 
         self.es_client = elasticsearch_client(conf['elasticsearch'])
         self.writeback_index = conf['writeback_index']
@@ -198,7 +199,12 @@ class Reactor(object):
     def handle_signal(self, signal_num, _):
         if hasattr(signal, 'SIGINFO') and signal_num == signal.SIGINFO:
             self.info()
+        elif signal_num == signal.SIGHUP:
+            reactor_logger.info('Attempting config reload')
+            self.reload = True
+            self.terminate(signal_num)
         else:
+            self.reload = False
             self.terminate(signal_num)
 
     def terminate(self, signal_num: int) -> None:

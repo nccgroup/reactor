@@ -345,6 +345,15 @@ end time of the last query. This is to prevent duplication or skipping of alerts
 By using the ``--debug`` flag instead of ``--verbose``, the body of email will instead be logged and the email will not
 be sent. In addition, the queries will not be saved to ``reactor_status``.
 
+Hot Reloading
+------------------
+
+To initiate an attempt to hot reload the global configuration file you should send a ``SIGHUP`` signal to the main
+process, this can be done on a posix shell using ``kill -HUP <pid>``. Reactor will mark itself to be reloaded, then
+attempt to shutdown, reload the global config file, and finally, start itself and all the plugins again.
+
+If you are running a cluster of reactor nodes then this will need to be called on each node individually.
+
 Stopping Reactor
 ------------------
 

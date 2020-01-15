@@ -360,37 +360,41 @@ def perform_silence(config: dict, args: dict) -> int:
 
 
 def perform_run(config: dict, args: dict) -> int:
-    # Create the reactor
-    reactor = Reactor(config, args)
+    while True:
+        # Create the reactor
+        reactor = Reactor(config, args)
 
-    # Set up the signal handler
-    signal.signal(signal.SIGINT, reactor.handle_signal)
-    if hasattr(signal, 'SIGINFO'):
-        signal.signal(signal.SIGINFO, reactor.handle_signal)
+        # Set up the signal handler
+        signal.signal(signal.SIGINT, reactor.handle_signal)
+        signal.signal(signal.SIGHUP, reactor.handle_signal)
+        if hasattr(signal, 'SIGINFO'):
+            signal.signal(signal.SIGINFO, reactor.handle_signal)
 
-    # Start the plugins
-    plugins = {}
-    for plugin_type in config['plugins']:
-        plugin_conf = config['plugins'][plugin_type]
-        plugin_class = import_class(plugin_type, config['mappings']['plugin'], reactor_plugin)
-        if not issubclass(plugin_class, reactor_plugin.BasePlugin):
-            raise ConfigException('Plugin type %s not a subclass of BasePlugin' % plugin_class)
-        plugins[plugin_type] = plugin_class(reactor, plugin_conf)
-        plugins[plugin_type].start()
+        # Start the plugins
+        plugins = {}
+        for plugin_type in config['plugins']:
+            plugin_conf = config['plugins'][plugin_type]
+            plugin_class = import_class(plugin_type, config['mappings']['plugin'], reactor_plugin)
+            if not issubclass(plugin_class, reactor_plugin.BasePlugin):
+                raise ConfigException('Plugin type %s not a subclass of BasePlugin' % plugin_class)
+            plugins[plugin_type] = plugin_class(reactor, plugin_conf)
+            plugins[plugin_type].start()
 
-    # Start reactor
-    if not args['plugins_only']:
-        exit_code = reactor.start()
-    else:
-        while reactor.terminate_called == 0:
-            time.sleep(0.5)
-        exit_code = 0
+        # Start reactor
+        if not args['plugins_only']:
+            exit_code = reactor.start()
+        else:
+            while reactor.terminate_called == 0:
+                time.sleep(0.5)
+            exit_code = 0
 
-    # Shutdown the plugins
-    for plugin in plugins.values():
-        plugin.shutdown()
+        # Shutdown the plugins
+        for plugin in plugins.values():
+            plugin.shutdown()
 
-    return exit_code
+        # If reactor did not receive an SIGHUP reload signal
+        if not reactor.reload:
+            return exit_code
 
 
 def main(args: list = None):
