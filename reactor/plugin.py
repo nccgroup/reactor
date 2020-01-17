@@ -81,8 +81,11 @@ class HttpServerPlugin(BasePlugin):
                             'rules': []}
 
                 for rule in reactor.loader:
+                    running = None
+                    if rule.locator in reactor.cluster.meta['executing']:
+                        running = time.time() - reactor.cluster.meta['executing'][rule.locator]
                     rule = {'locator': rule.locator,
-                            'running': rule.locator in reactor.cluster.meta['executing'],
+                            'running': running,
                             'time_taken': rule.data.time_taken}
                     response['rules'].append(rule)
             else:

@@ -82,7 +82,7 @@ class Reactor(object):
                                      crt_file=self.conf['cluster']['ssl'].get('node_cert'),
                                      ca_crt=self.conf['cluster']['ssl'].get('ca_certs'))
         self.cluster.meta['cpu_count'] = self.max_processpool
-        self.cluster.meta['executing'] = set()
+        self.cluster.meta['executing'] = {}
         self.cluster_info = {'leader': None,
                              'rules': []}
 
@@ -433,7 +433,7 @@ class Reactor(object):
 
         # If the rule was submitted to the executor to be run, add the rule to the list of executing rules
         if event.code == apscheduler.events.EVENT_JOB_SUBMITTED:
-            self.cluster.meta['executing'].add(event.job_id)
+            self.cluster.meta['executing'][event.job_id] = time.time()
             return
 
         # If there was an uncaught exception raised
@@ -446,7 +446,7 @@ class Reactor(object):
 
         # Remove the rule from the list of executing rules
         if event.job_id in self.cluster.meta['executing']:
-            self.cluster.meta['executing'].remove(event.job_id)
+            del self.cluster.meta['executing'][event.job_id]
 
         # Apply rules based on execution time limits
         self.reset_rule_schedule(rule)
