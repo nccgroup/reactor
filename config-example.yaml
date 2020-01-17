@@ -150,53 +150,53 @@ rule:
 #    logline:
 #      format: '%(asctime)s [%(name)s] %(levelname)s: %(message)s'
 #
-#    handlers:
-#      console:
-#        class: logging.StreamHandler
-#        formatter: logline
-#        level: DEBUG
-#        stream: ext://sys.stderr
+#  handlers:
+#    console:
+#      class: logging.StreamHandler
+#      formatter: logline
+#      level: DEBUG
+#      stream: ext://sys.stderr
 #
-#      file:
-#        class : logging.FileHandler
-#        formatter: logline
-#        level: DEBUG
-#        filename: reactor.log
+#    file:
+#      class : logging.FileHandler
+#      formatter: logline
+#      level: DEBUG
+#      filename: reactor.log
 #
-#    loggers:
-#      reactor:
-#        level: WARN
-#        handlers: []
-#        propagate: true
+#  loggers:
+#    reactor:
+#      level: WARN
+#      handlers: []
+#      propagate: true
 #
-#      reactor.plugin:
-#        level: WARN
-#        handlers: []
-#        propagate: true
+#    reactor.plugin:
+#      level: WARN
+#      handlers: []
+#      propagate: true
 #
-#      apscheduler:
-#        level: WARN
-#        handlers: []
-#        propagate: true
+#    apscheduler:
+#      level: WARN
+#      handlers: []
+#      propagate: true
 #
-#      raft:
-#        level: WARN
-#        handlers: []
-#        propagate: true
+#    raft:
+#      level: WARN
+#      handlers: []
+#      propagate: true
 #
-#      elasticsearch:
-#        level: WARN
-#        handlers: []
-#        propagate: true
+#    elasticsearch:
+#      level: WARN
+#      handlers: []
+#      propagate: true
 #
-#      elasticsearch.trace:
-#        level: WARN
-#        handlers: []
-#        propagate: true
+#    elasticsearch.trace:
+#      level: WARN
+#      handlers: []
+#      propagate: true
 #
-#      '':  # root logger
-#        level: WARN
-#          handlers:
-#            - console
-#            - file
-#        propagate: false
+#    '':  # root logger
+#      level: WARN
+#        handlers:
+#          - console
+#          - file
+#      propagate: false
