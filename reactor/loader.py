@@ -112,7 +112,7 @@ class RuleLoader(object):
                 rule = self.load_configuration(locator)
                 rule.hash = self.get_hash(locator)
                 # By setting `is_enabled: False` in rule YAML, a rule is easily disabled
-                if not rule.enabled:
+                if not rule.enabled and rule.locator not in use_rules:
                     continue
                 if rule.name in names:
                     raise ReactorException('Duplicate rule named %s' % rule.name)
