@@ -7,7 +7,7 @@ import threading
 import time
 
 from .reactor import Reactor
-from .util import import_class
+from .util import import_class, dt_to_ts
 
 logging.getLogger('reactor.plugin').addHandler(logging.NullHandler())
 
