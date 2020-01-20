@@ -167,6 +167,8 @@ class Reactor(object):
         # Keep track of when reactor was started
         self.up_time = time.time()
 
+        if self.args['end']:
+            reactor_logger.info('Running until: %s', pretty_ts(self.args['end']))
         reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
         reactor_logger.info('Starting up (max_processpool=%s cluster_size=%s)',
                             self.max_processpool, 1 + len(self.cluster.neighbours))
@@ -187,6 +189,7 @@ class Reactor(object):
                                jobstore='internal',
                                executor='default')
         self.scheduler.start()
+        remaining = None
 
         while self.running:
             # If an end time was specified and it has elapsed
@@ -195,6 +198,10 @@ class Reactor(object):
                 if self.loader.loaded and all([r.data.has_run_once for r in self.loader]):
                     reactor_logger.info('Reached end time, shutting down reactor')
                     self.stop()
+                elif self.loader.loaded:
+                    if remaining != [r.locator for r in filter(lambda r: not r.data.has_run_once, self.loader)]:
+                        remaining = [r.locator for r in filter(lambda r: not r.data.has_run_once, self.loader)]
+                        reactor_logger.info('Reached end time, waiting rules to run once: %s', remaining)
 
             # Briefly sleep
             time.sleep(0.1)
