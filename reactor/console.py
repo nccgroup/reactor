@@ -293,6 +293,13 @@ class Console(object):
 
         return self.reactor.core.get_writeback_index(index_type)
 
+    def _get_hits_total(self, data: dict) -> int:
+        """ Base on Elasticsearch version, return the total number of hits stored in the result dict. """
+        if self.reactor.es_client.es_version_at_least(7):
+            return int(data['hits']['total']['value'])
+        else:
+            return int(data['hits']['total'])
+
     def _switch_view(self, index_name: str = None, index_type: str = None):
         if not index_name and index_type != 'indices':
             index_name = self._get_index(index_type)
@@ -385,7 +392,7 @@ class Console(object):
         data = self._retrieve(self.display['index'], self.display['type'])
 
         self.display['items'] = {i: h for i, h in enumerate(data['hits']['hits'], 1)}
-        self.display['total'] = data['hits']['total']
+        self.display['total'] = self._get_hits_total(data)
 
         max_hits = self.inner_window.getmaxyx()[0]
         table, count, total = self._generate_table(self.inner_window, self.settings[self.display['type']], data)
@@ -458,11 +465,11 @@ class Console(object):
         if not data['hits']['hits']:
             table_str += '\n' + '=== No hits ==='.center(table_width)
         # If reached max_hits limit
-        if row_num < int(data['hits']['total']) and (row_num - offset) < per_page:
+        if row_num < self._get_hits_total(data) and (row_num - offset) < per_page:
             table_str += '\n' + '---' if row_num > 0 else ''
             table_str += '\n' + '=== Reached max hits limit ==='.center(table_width)
 
-        return table_str, len(data['hits']['hits']), int(data['hits']['total'])
+        return table_str, len(data['hits']['hits']), self._get_hits_total(data)
 
     def _refreshed_at(self, index: str = None):
         index = index or self.display['index'] or 'indices'
@@ -480,10 +487,10 @@ class Console(object):
 
         if index is None:
             res = self.reactor.es_client.cat.indices(index=self.reactor.writeback_index + '_*', format='json')
-            res = {'hits': {'total': len(res),
+            res = {'hits': {'total': {'value': len(res)} if self.reactor.es_client.es_version_at_least(7) else len(res),
                             'hits': sorted(res, key=lambda h: h['index'])}}
             for i, hit in enumerate(res['hits']['hits']):
-                res['hits']['hits'][i]['shards'] = f'{hit["pri"]} * {hit["rep"]}'
+                res['hits']['hits'][i]['shards'] = f"{hit['pri']} * {hit['rep']}"
         else:
             query = self.settings[index_type]['query']
             res = self.reactor.es_client.search(index=index, body=query,
