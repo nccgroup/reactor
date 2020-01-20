@@ -117,9 +117,14 @@ class Reactor(object):
                                     apscheduler.events.EVENT_JOB_MISSED)
 
     def reset_rule_schedule(self, rule: Rule):
+        # If our run has been segmented
+        if rule.data.segmented:
+            if self.scheduler.get_job(job_id=rule.locator):
+                self.scheduler.modify_job(job_id=rule.locator, next_run_time=dt_now())
         # We hit the end of an execution schedule, pause ourselves until next run
-        if rule.conf('limit_execution') and rule.data.next_start_time:
-            self.scheduler.modify_job(job_id=rule.locator, next_run_time=rule.data.next_start_time)
+        elif rule.conf('limit_execution') and rule.data.next_start_time:
+            if self.scheduler.get_job(job_id=rule.locator):
+                self.scheduler.modify_job(job_id=rule.locator, next_run_time=rule.data.next_start_time)
             # If we are preventing covering non-scheduled time periods, reset min_start_time and previous_end_time
             if rule.data.next_min_start_time:
                 rule.data.minimum_start_time = rule.data.next_min_start_time
@@ -128,6 +133,7 @@ class Reactor(object):
 
     def test_rule(self, rule: Rule, end_time, start_time=None):
         try:
+            rule.data.start_time = start_time
             rule.data = self.core.run_rule(rule, end_time, start_time)
         except ReactorException as e:
             reactor_logger.error('Error running rule "%s": %s', rule.name, str(e))
@@ -862,19 +868,19 @@ class Core(object):
             self.handle_error('Error querying for last run: %s' % e, {'rule': rule.name}, rule=rule)
             return None
 
-    def set_start_time(self, rule: Rule, end_time) -> None:
+    def set_start_time(self, rule: Rule, end_time) -> datetime.datetime:
         """ Given a rule and an end time, sets the appropriate start_time for it. """
         # This means we are starting fresh
-        if rule.data.start_time is None:
+        if rule.data.start_time is None or not rule.data.has_run_once:
             if not rule.conf('scan_entire_timeframe'):
                 # Try to get the last run
-                last_run_end = self.get_start_time(rule)
+                last_run_end = rule.data.end_time or self.get_start_time(rule)
                 if last_run_end:
                     rule.data.start_time = last_run_end
                     rule.data.start_time = rule.adjust_start_time_for_overlapping_agg_query(rule.data.start_time)
                     rule.data.start_time = rule.adjust_start_time_for_interval_sync(rule.data.start_time)
                     rule.data.minimum_start_time = rule.data.start_time
-                    return None
+                    return rule.data.start_time
 
         # Use buffer_time for normal queries, or run_every increments otherwise
         # or, if scan_entire_timeframe
@@ -900,7 +906,7 @@ class Core(object):
             else:
                 rule.data.start_time = rule.data.previous_end_time or (end_time - rule.conf('timeframe'))
 
-        return None
+        return rule.data.start_time
 
     def get_index_start(self, es_client: Elasticsearch, index: str, timestamp_field: str = '@timestamp') -> str:
         """
@@ -1146,7 +1152,7 @@ class Core(object):
         # Add it as an aggregated alert
         self.add_aggregated_alert(alert, rule)
 
-    def run_rule(self, rule: Rule, end_time, start_time=None):
+    def run_rule(self, rule: Rule, end_time: datetime.datetime, start_time: datetime.datetime):
         # Start the clock
         rule.data.start_run_time()
 
@@ -1157,11 +1163,7 @@ class Core(object):
             alert = rule.data.agg_alerts.pop()
             self.add_aggregated_alert(alert, rule)
 
-        # Start from provided time if it's given
-        if start_time:
-            rule.data.start_time = start_time
-        else:
-            self.set_start_time(rule, end_time)
+        # Store the original_start_time
         rule.data.original_start_time = rule.data.start_time
 
         # Don't run if start_time was set to the future
@@ -1178,29 +1180,17 @@ class Core(object):
         except Exception as e:
             raise ReactorException('Error preparing rule %s: %s' % (rule.name, repr(e)))
 
-        # Run the rule. If querying over a large time period, split it up into segments
-        segment_size = rule.get_segment_size()
-        tmp_end_time = rule.data.start_time
-        while (end_time - rule.data.start_time) > segment_size:
-            tmp_end_time = tmp_end_time + segment_size
-            for extra, match in self.run_query(rule, rule.data.start_time, tmp_end_time):
-                self.process_match(rule, extra, match)
-            rule.data.cumulative_hits += rule.data.num_hits
-            rule.data.num_hits = 0
-            rule.data.start_time = tmp_end_time
-            for extra, match in rule.garbage_collect(tmp_end_time):
-                self.process_match(rule, extra, match)
-
-        # Guarantee that at least one search search occurs
+        # Run the rule
         if rule.conf('aggregation_query_element'):
-            if end_time - tmp_end_time == segment_size:
-                for extra, match in self.run_query(rule, tmp_end_time, end_time):
+            if end_time - rule.data.start_time == rule.get_segment_size():
+                for extra, match in self.run_query(rule, rule.data.start_time, end_time):
                     self.process_match(rule, extra, match)
                 rule.data.cumulative_hits += rule.data.num_hits
-            elif (rule.data.original_start_time - tmp_end_time).total_seconds() == 0:
-                return {}
+            elif (rule.data.original_start_time - rule.data.start_time).total_seconds() == 0:
+                return rule.data
             else:
-                end_time = tmp_end_time
+                end_time = rule.data.start_time
+            # time.sleep(5)
         else:
             for extra, match in self.run_query(rule, rule.data.start_time, end_time):
                 self.process_match(rule, extra, match)
@@ -1244,11 +1234,20 @@ class Core(object):
 
         # Set end time based on the rule's delay
         if self.args['end']:
-            end_time = self.args['end']
+            desired_end_time = self.args['end']
         elif rule.conf('query_delay'):
-            end_time = dt_now() - rule.conf('query_delay')
+            desired_end_time = dt_now() - rule.conf('query_delay')
         else:
-            end_time = dt_now()
+            desired_end_time = dt_now()
+        end_time = desired_end_time
+
+        # Calculate start_time based from the desired end_time
+        rule.data.start_time = rule.data.initial_start_time or self.set_start_time(rule, end_time)
+
+        # Alter the end_time based on segment size
+        segment_size = rule.get_segment_size()
+        if (end_time - rule.data.start_time) > segment_size:
+            end_time = rule.data.start_time + segment_size
 
         # Disable the rule if it has run at least once, an end time was specified, and the end time has elapsed
         if rule.data.has_run_once and self.args['end'] and self.args['end'] < dt_now():
@@ -1271,7 +1270,7 @@ class Core(object):
 
         # Run the rule
         try:
-            rule.data = self.run_rule(rule, end_time, rule.data.initial_start_time)
+            rule.data = self.run_rule(rule, end_time, rule.data.start_time)
         except ReactorException as e:
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name}, rule=rule)
         else:
@@ -1302,7 +1301,8 @@ class Core(object):
         self.garbage_collect(rule)
 
         # Mark the rule has having been run at least once
-        rule.data.has_run_once = True
+        rule.data.segmented = desired_end_time != end_time
+        rule.data.has_run_once |= not rule.data.segmented
         rule.data.end_time = end_time
         return rule.data
 

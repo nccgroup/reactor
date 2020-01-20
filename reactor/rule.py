@@ -59,6 +59,7 @@ class WorkingData(object):
         self.current_aggregate_id = {}
         self.processed_hits = {}
         self.has_run_once = False
+        self.segmented = False
         self.scroll_id = None
 
         # Rule Type
