@@ -877,6 +877,7 @@ class Core(object):
 
     def set_start_time(self, rule: Rule, end_time) -> datetime.datetime:
         """ Given a rule and an end time, sets the appropriate start_time for it. """
+        # TODO: introduce way of specifying the maximum amount of time we will look back when starting fresh
         # This means we are starting fresh
         if rule.data.start_time is None or not rule.data.has_run_once:
             if not rule.conf('scan_entire_timeframe'):

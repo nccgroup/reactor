@@ -90,16 +90,14 @@ class HttpServerPlugin(BasePlugin):
                             'running': running,
                             'time_taken': rule.data.time_taken,
                             'next_run': dt_to_ts(rule_job.next_run_time) if rule_job else None,
-                            'last_run': dt_to_ts(rule.data.start_time) if rule.data.start_time else None,
                             'loaded_at': dt_to_ts(rule.conf('loaded_at')),
                             'disabled_at': None}
                     rules[rule['locator']] = rule
                 for rule in reactor.loader.disabled():
                     rule = {'locator': rule.locator,
-                            'running': False,
+                            'running': None,
                             'time_taken': rule.data.time_taken,
                             'next_run': None,
-                            'last_run': dt_to_ts(rule.data.start_time) if rule.data.start_time else None,
                             'loaded_at': dt_to_ts(rule.conf('loaded_at')),
                             'disabled_at': dt_to_ts(rule.conf('disabled_at'))}
                     rules[rule['locator']] = rule
