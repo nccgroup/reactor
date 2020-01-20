@@ -15,12 +15,13 @@ from .rule import Rule
 from .util import (
     reactor_logger,
     load_yaml,
-    import_class
+    import_class,
+    dt_now
 )
 from .validator import yaml_schema, SetDefaultsDraft7Validator
 
 _schemas = {}
-""" Store """
+""" Cache for holding rule validator schema. """
 
 
 def _validator(schema_file: str):
@@ -76,11 +77,24 @@ class RuleLoader(object):
 
     def disable(self, locator: str) -> None:
         """ Disable the rule until it is next updated. """
-        self._disabled[locator] = self.get_hash(locator)
+        rule = self[locator] if locator in self else Rule(locator, self.get_hash(locator), {})
+        rule.set_conf('disabled_at', dt_now())
+        rule.data.reset()
+        self._disabled[locator] = rule
 
-    def enabled(self, locator: str) -> None:
+    def enable(self, locator: str) -> None:
         """ Enable the rule. """
-        self._disabled.pop(locator, None)
+        rule = self._disabled.pop(locator, None)
+        if rule is not None:
+            rule.set_conf('disabled_at', dt_now())
+
+    def disabled(self) -> Iterator[Rule]:
+        """ Returns an iterator of all rules disabled because of an uncaught exception while running. """
+        disabled = []
+        for rule in list(self._disabled.values()):
+            if rule.conf('loaded_at'):
+                disabled.append(rule)
+        return iter(disabled)
 
     def load(self, args: dict = None) -> list:
         """
@@ -95,14 +109,14 @@ class RuleLoader(object):
         rules = {}
         for locator in self.discover(use_rules):
             # If this rule has been disabled and the hash has not changed, skip it
-            if locator in self._disabled and self.get_hash(locator) == self._disabled[locator]:
+            if locator in self._disabled and self.get_hash(locator) == self._disabled[locator].hash:
                 continue
 
             # If we have already loaded this rule and it hasn't changed, use the existing
             if self.rules.get(locator) and self.rules[locator].hash == self.get_hash(locator):
                 rules[locator] = self.rules[locator]
                 continue
-            elif self.rules.get(locator):
+            elif self.rules.get(locator) or locator in self._disabled:
                 reactor_logger.info('Updating rule "%s"', locator)
             else:
                 reactor_logger.log(logging.INFO if self.loaded else logging.DEBUG, 'Loaded rule "%s"', locator)
@@ -110,7 +124,6 @@ class RuleLoader(object):
             # Load the rule
             try:
                 rule = self.load_configuration(locator)
-                rule.hash = self.get_hash(locator)
                 # By setting `is_enabled: False` in rule YAML, a rule is easily disabled
                 if not rule.enabled and rule.locator not in use_rules:
                     continue
@@ -165,7 +178,8 @@ class RuleLoader(object):
 
         else:
             # Clear the invalid cache
-            self.enabled(locator)
+            self.enable(locator)
+            rule.set_conf('loaded_at', dt_now())
 
             return rule
 

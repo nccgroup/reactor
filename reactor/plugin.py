@@ -80,14 +80,31 @@ class HttpServerPlugin(BasePlugin):
                                         'changed': time.time() - reactor.cluster.changed},
                             'rules': []}
 
+                rules = {}
                 for rule in reactor.loader:
                     running = None
                     if rule.locator in reactor.cluster.meta['executing']:
                         running = time.time() - reactor.cluster.meta['executing'][rule.locator]
+                    rule_job = reactor.scheduler.get_job(rule.locator)
                     rule = {'locator': rule.locator,
                             'running': running,
-                            'time_taken': rule.data.time_taken}
-                    response['rules'].append(rule)
+                            'time_taken': rule.data.time_taken,
+                            'next_run': dt_to_ts(rule_job.next_run_time) if rule_job else None,
+                            'last_run': dt_to_ts(rule.data.start_time) if rule.data.start_time else None,
+                            'loaded_at': dt_to_ts(rule.conf('loaded_at')),
+                            'disabled_at': None}
+                    rules[rule['locator']] = rule
+                for rule in reactor.loader.disabled():
+                    rule = {'locator': rule.locator,
+                            'running': False,
+                            'time_taken': rule.data.time_taken,
+                            'next_run': None,
+                            'last_run': dt_to_ts(rule.data.start_time) if rule.data.start_time else None,
+                            'loaded_at': dt_to_ts(rule.conf('loaded_at')),
+                            'disabled_at': dt_to_ts(rule.conf('disabled_at'))}
+                    rules[rule['locator']] = rule
+
+                response['rules'].extend(rules.values())
             else:
                 return self.send_error(404, 'Not Found')
 

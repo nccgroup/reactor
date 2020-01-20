@@ -195,14 +195,15 @@ class Rule(object):
     def _working_data(self):
         return WorkingData(self.conf('timestamp_field', '@timestamp'))
 
-    def __hash__(self):
-        return self._hash
-
     def __eq__(self, other):
         return self._hash == other
 
     def __repr__(self):
         return '%s.%s%s' % (self.__module__, type(self).__name__, self._conf)
+
+    @property
+    def hash(self):
+        return self._hash
 
     @property
     def enabled(self):
