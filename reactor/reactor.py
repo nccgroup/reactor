@@ -369,6 +369,7 @@ class Reactor(object):
                                            executor='processpool',
                                            name=rule.name,
                                            next_run_time=datetime.datetime.now(),
+                                           misfire_grace_time=60,
                                            trigger=trigger)
                 else:
                     # Add the rule to the scheduler
