@@ -27,7 +27,7 @@ es_client.indices.create('reactor_logs',
 # Insert some logs to be tested against
 print(' [.] Inserting data')
 action_data_pairs = []
-action_template = {'index': {'_index': 'reactor_logs', '_type': '_doc'}}
+action_template = {'index': {'_index': 'reactor_logs', '_type': 'doc'}}
 for n, log in enumerate(logs):
     # Add the action
     action = copy.copy(action_template)  # type: dict

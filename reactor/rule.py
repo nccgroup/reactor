@@ -564,7 +564,7 @@ class Rule(object):
         if not self.conf('_source_enabled'):
             query['stored_fields'] = self.conf('include')
             extra_args = {}
-        elif self.es_client.es_version_at_least(6, 6):
+        elif self.es_client.es_version_at_least(6, 6) or self.es_client.client_version_at_least(7):
             extra_args = {'_source_includes': self.conf('include')}
         else:
             extra_args = {'_source_include': self.conf('include')}

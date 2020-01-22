@@ -578,7 +578,7 @@ class Core(object):
             rule.data.alerts_cache[doc_id] = writeback_body
 
         try:
-            doc_type = '_doc' if self.es_client.es_version_at_least(6) else doc_type
+            doc_type = '_doc' if self.es_client.es_version_at_least(6, 2) else ('reactor_' + doc_type)
             # If there is a writeback cache available, cache the action for a later bulk request
             if hasattr(self.thread_data, 'writeback_cache'):
                 action = 'update' if update else 'index'
@@ -791,7 +791,7 @@ class Core(object):
             if self.es_client.es_version_at_least(6):
                 res = self.es_client.search(index=self.alert_alias, body=query, size=1)
             else:
-                res = self.es_client.search(index=self.alert_alias, doc_type='alert', body=query, size=1)
+                res = self.es_client.search(index=self.alert_alias, doc_type='reactor_alert', body=query, size=1)
 
             if len(res['hits']['hits']) == 0:
                 return None
@@ -870,17 +870,16 @@ class Core(object):
                  'sort': {'@timestamp': {'order': 'desc'}}}
 
         try:
-            doc_type = 'status'
-            index = self.get_writeback_index(doc_type)
-            if self.es_client.es_version_at_least(6, 6):
+            index = self.get_writeback_index('status')
+            if self.es_client.es_version_at_least(6, 6) or self.es_client.client_version_at_least(7):
                 res = self.es_client.search(index=index, size=1, body=query,
-                                            _source_includes=['end_time', 'rule_id'])
+                                            _source_includes=['end_time', 'rule_uuid'])
             elif self.es_client.es_version_at_least(6):
                 res = self.es_client.search(index=index, size=1, body=query,
-                                            _source_include=['end_time', 'rule_id'])
+                                            _source_include=['end_time', 'rule_uuid'])
             else:
-                res = self.es_client.search(index=index, doc_type=doc_type,
-                                            size=1, body=query, _source_include=['end_time', 'rule_id'])
+                res = self.es_client.search(index=index, doc_type='reactor_status',
+                                            size=1, body=query, _source_include=['end_time', 'rule_uuid'])
 
             if res['hits']['hits']:
                 end_time = ts_to_dt(res['hits']['hits'][0]['_source']['end_time'])
@@ -1005,12 +1004,12 @@ class Core(object):
 
         try:
             index = self.get_writeback_index('silence')
-            if self.es_client.es_version_at_least(6, 2):
+            if self.es_client.es_version_at_least(6, 6) or self.es_client.client_version_at_least(7):
                 res = self.es_client.search(index=index, size=1, body=query, _source_includes=['until', 'exponent'])
             elif self.es_client.es_version_at_least(6):
                 res = self.es_client.search(index=index, size=1, body=query, _source_include=['until', 'exponent'])
             else:
-                res = self.es_client.search(index=index, doc_type='silence',
+                res = self.es_client.search(index=index, doc_type='reactor_silence',
                                             size=1, body=query, _source_include=['until', 'exponent'])
         except elasticsearch.ElasticsearchException as e:
             self.handle_error('Error while querying for alert silence status: %s' % e, {'rule': rule.name}, rule=rule)
@@ -1117,7 +1116,7 @@ class Core(object):
                 ]}}
             }, _source=['alert_uuid'], size=1000)
         else:
-            res = self.es_client.search(index=self.get_writeback_index('silence'), doc_type='_doc', body={
+            res = self.es_client.search(index=self.get_writeback_index('silence'), doc_type='reactor_silence', body={
                 'query': {'bool': {'must': [
                     {'term': {'rule_uuid': rule.locator}},
                     {'range': {'until': {'lt': dt_to_ts(now - buffer_time)}}}
@@ -1126,7 +1125,7 @@ class Core(object):
         elasticsearch.helpers.bulk(self.es_client, [{
             '_op_type': 'delete',
             '_index': self.get_writeback_index('silence'),
-            '_type': '_doc',
+            '_type': '_doc' if self.es_client.es_version_at_least(6) else 'reactor_silence',
             '_id': hit['_id'],
         } for hit in res['hits']['hits']])
         list(map(rule.data.alerts_cache.pop,
@@ -1349,7 +1348,7 @@ class Core(object):
             if self.es_client.es_version_at_least(6):
                 res = self.es_client.search(index=self.alert_alias, body=query, size=1000)
             else:
-                res = self.es_client.search(index=self.alert_alias, doc_type='alert', body=query, size=1000)
+                res = self.es_client.search(index=self.alert_alias, doc_type='reactor_alert', body=query, size=1000)
             if res['hits']['hits']:
                 return res['hits']['hits']
         except elasticsearch.ElasticsearchException as e:
@@ -1367,7 +1366,7 @@ class Core(object):
             if self.es_client.es_version_at_least(6):
                 res = self.es_client.search(index=self.alert_alias, body=query, size=self.max_aggregation)
             else:
-                res = self.es_client.search(index=self.alert_alias, doc_type='alert',
+                res = self.es_client.search(index=self.alert_alias, doc_type='reactor_alert',
                                             body=query, size=self.max_aggregation)
 
             for match in res['hits']['hits']:

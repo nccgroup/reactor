@@ -89,7 +89,7 @@ def create_indices(es_client: ElasticSearchClient,
                                       body=es_index_mappings['silence'], include_type_name=True)
         es_client.indices.put_mapping(index=conf['writeback_index'] + '_error', doc_type='_doc',
                                       body=es_index_mappings['error'], include_type_name=True)
-    elif es_client.es_version_at_least(6):
+    elif es_client.es_version_at_least(6, 2):
         reactor_logger.info('Applying mappings for ElasticSearch v6.x')
         es_client.indices.put_mapping(index=conf['writeback_index'] + '_alert', doc_type='_doc',
                                       body=es_index_mappings['alert'])
@@ -99,6 +99,17 @@ def create_indices(es_client: ElasticSearchClient,
         es_client.indices.put_mapping(index=conf['writeback_index'] + '_silence', doc_type='_doc',
                                       body=es_index_mappings['silence'])
         es_client.indices.put_mapping(index=conf['writeback_index'] + '_error', doc_type='_doc',
+                                      body=es_index_mappings['error'])
+    elif es_client.es_version_at_least(6):
+        reactor_logger.info('Applying mappings for ElasticSearch v6.x')
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_alert', doc_type='reactor_alert',
+                                      body=es_index_mappings['alert'])
+        es_client.indices.put_alias(index=conf['writeback_index'] + '_alert', name=conf['alert_alias'])
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_status', doc_type='reactor_status',
+                                      body=es_index_mappings['status'])
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_silence', doc_type='reactor_silence',
+                                      body=es_index_mappings['silence'])
+        es_client.indices.put_mapping(index=conf['writeback_index'] + '_error', doc_type='reactor_error',
                                       body=es_index_mappings['error'])
     else:
         reactor_logger.info('Applying mappings for ElasticSearch v5.x')
@@ -130,12 +141,18 @@ def create_templates(es_client: ElasticSearchClient, conf: dict, es_index_mappin
                                              'aliases': {conf['alert_alias']: {}},
                                              'settings': es_index_settings,
                                              'mappings': es_index_mappings['alert']})
-    elif es_client.es_version_at_least(6):
+    elif es_client.es_version_at_least(6, 2):
         es_client.indices.put_template(name=conf['writeback_index'],
                                        body={'index_patterns': [conf['writeback_index'] + '_alert_*'],
                                              'aliases': {conf['alert_alias']: {}},
                                              'settings': es_index_settings,
                                              'mappings': {'_doc': es_index_mappings['alert']}})
+    elif es_client.es_version_at_least(6):
+        es_client.indices.put_template(name=conf['writeback_index'],
+                                       body={'index_patterns': [conf['writeback_index'] + '_alert_*'],
+                                             'aliases': {conf['alert_alias']: {}},
+                                             'settings': es_index_settings,
+                                             'mappings': {'reactor_alert': es_index_mappings['alert']}})
     else:
         es_client.indices.put_template(name=conf['writeback_index'],
                                        body={'template': conf['writeback_index'] + '_*',
