@@ -6,8 +6,6 @@ import reactor
 from .util import dots_set_default, dots_set, dots_get, import_class, load_yaml, reactor_logger
 from .validator import yaml_schema, SetDefaultsDraft7Validator
 
-required_config = frozenset(['elasticsearch.host', 'elasticsearch.port'])
-
 default_mappings = {
     # Default rule loaders
     'loader': {
@@ -55,7 +53,8 @@ default_mappings = {
 }
 
 
-config_schema = yaml_schema(SetDefaultsDraft7Validator, 'schemas/config.yaml', __file__)
+def _config_schema():
+    return yaml_schema(SetDefaultsDraft7Validator, 'schemas/config.yaml', __file__)
 
 
 def parse_config(filename: str, args: dict, defaults: dict = None, overwrites: dict = None) -> dict:
@@ -74,7 +73,7 @@ def parse_config(filename: str, args: dict, defaults: dict = None, overwrites: d
 
     # Validate config - and set defaults specified in the schema
     try:
-        config_schema.validate(conf)
+        _config_schema().validate(conf)
     except jsonschema.ValidationError as e:
         raise reactor.ReactorException('Invalid config file "%s":\n%s' % (filename, e))
 
