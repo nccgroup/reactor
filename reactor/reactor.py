@@ -522,12 +522,25 @@ class Core(object):
         self.args = args
         self.loader = conf['loader']  # type: reactor.loader.RuleLoader
 
-        self.es_client = elasticsearch_client(conf['elasticsearch'])
+        self._es_client = None
         self.writeback_index = conf['writeback_index']
         self.alert_alias = conf['alert_alias']
         self.alert_time_limit = conf['alert_time_limit']
         self.old_query_limit = conf['old_query_limit']
         self.max_aggregation = conf['max_aggregation']
+
+    def __getstate__(self):
+        """ Remove elasticsearch client from pickling since it doesn't tolerate ``fork`` very well. """
+        state = self.__dict__
+        state['_es_client'] = None
+        return state
+
+    @property
+    def es_client(self):
+        """ Lazy creation of the elasticsearch client since it doesn't tolerate ``fork`` very well. """
+        if self._es_client is None:
+            self._es_client = elasticsearch_client(self.conf['elasticsearch'])
+        return self._es_client
 
     def get_writeback_index(self, doc_type: str, rule=None, match_body=None):
         """ In ElasticSearch >= 6.x, multiple doc types in a single index. """
