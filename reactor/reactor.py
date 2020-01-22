@@ -63,6 +63,10 @@ class Reactor(object):
         self.writeback_index = conf['writeback_index']
         self.alert_alias = conf['alert_alias']
 
+        if self.es_client.client_version[0] != self.es_client.es_version[0]:
+            reactor_logger.warning('Major versions do not match between elasticsearch-py %s and cluster %s',
+                                   self.es_client.client_version, self.es_client.es_version)
+
         self.up_time = 0
         self.start_time = args.get('start', dt_now())
         self.scheduler = apscheduler.schedulers.background.BackgroundScheduler()
@@ -169,7 +173,8 @@ class Reactor(object):
 
         if self.args['end']:
             reactor_logger.info('Running until: %s', pretty_ts(self.args['end']))
-        reactor_logger.info('ElasticSearch version: %s', self.es_client.es_version)
+        reactor_logger.info('ElasticSearch version: %s  library version: %s',
+                            self.es_client.es_version, self.es_client.client_version)
         reactor_logger.info('Starting up (max_processpool=%s cluster_size=%s)',
                             self.max_processpool, 1 + len(self.cluster.neighbours))
 

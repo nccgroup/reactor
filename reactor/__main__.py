@@ -25,7 +25,7 @@ from reactor.util import (
 )
 
 
-def parse_args(args: dict) -> (argparse.ArgumentParser, dict):
+def parse_args(args: list) -> (argparse.ArgumentParser, dict):
     config = argparse.ArgumentParser(add_help=False)
     config.add_argument('-c', '--config',
                         action='store',
@@ -249,6 +249,9 @@ def perform_init(config: dict, args: dict) -> int:
     if not es_client.es_version_at_least(5):
         reactor_logger.fatal('Unsupported version of ElasticSearch: %s', es_client.es_version)
         return 2
+    if es_client.client_version[0] != es_client.es_version[0]:
+        reactor_logger.warning('Major versions do not match between elasticsearch-py %s and cluster %s',
+                               es_client.client_version, es_client.es_version)
 
     from reactor.init import create_indices
     create_indices(es_client, config, args['recreate'], args['force'], args['old_index'], args['mappings_dir'])

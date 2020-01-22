@@ -18,8 +18,22 @@ Reactor automatically updates silenced alerts with repeat alert information.
 Currently Reactor supports ElasticSearch 5.x.x, 6.x.x, and 7.x.x
 As new versions of elasticsearch become available Reactor will be updated to support.
 There is no intention to add support for older versions of ElasticSearch.
-Currently, there is no date to remove support for older versions of ElasticSearch. If ElasticSearch's python package
+Currently, there is no date to remove support for older versions of ElasticSearch. If ElasticSearch's python library
 removes support we are likely to follow suite.
+
+### Compatibility
+As per ElasticSearch's python library's guidelines is is recommended to use install the version of the library with the
+same major version as the cluster.
+
+For **Elasticsearch 7.0** and later, use the major version 7 (``elasticsearch<8.0.0,>=7.0.0``).
+
+For **Elasticsearch 6.0** and later, use the major version 6 (``elasticsearch<7.0.0,>=6.0.0``).
+
+For **Elasticsearch 5.0** and later, use the major version 5 (``elasticsearch<6.0.0,>=5.0.0``).
+
+Please note there is a [known bug](https://github.com/elastic/elasticsearch-py/issues/971) introduced version ``6.4.0``
+of the ElasticSearch library which was fixed in ``7.0.4`` but not in major version 6. The bug puts the ``scroll_id`` in
+the query parameter which can cause Elasticsearch to return ``400`` status codes for valid scroll ids.
 
 
 ## Development

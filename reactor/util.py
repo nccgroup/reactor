@@ -39,9 +39,17 @@ class ElasticSearchClient(elasticsearch.Elasticsearch):
             self._es_version = tuple(int(_) for _ in self.info()['version']['number'].split('.'))
         return self._es_version
 
+    @property
+    def client_version(self) -> tuple:
+        return elasticsearch.__version__
+
     def es_version_at_least(self, major: int, minor: int = 0, patch: int = 0) -> bool:
         """ Check whether a semantic version is at least the specified version. """
         return semantic_at_least(self.es_version, major, minor, patch)
+
+    def client_version_at_least(self, major: int, minor: int = 0, patch: int = 0) -> bool:
+        """ Check whether a semantic version is at least the specified version. """
+        return semantic_at_least(elasticsearch.__version__, major, minor, patch)
 
     def wait_until_responsive(self, patience: datetime.timedelta):
         """ Wait until ElasticSearch becomes responsive (or too much time passes). """
