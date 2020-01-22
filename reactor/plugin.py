@@ -73,36 +73,7 @@ class HttpServerPlugin(BasePlugin):
         def do_GET(self):
             if self.path == '/':
                 reactor = self.server.reactor  # type: Reactor
-                response = {'up_time': time.time() - reactor.up_time,
-                            'cluster': {'size': len(reactor.cluster.neighbourhood),
-                                        'leader': reactor.cluster.leader,
-                                        'neighbourhood': list(reactor.cluster.neighbourhood),
-                                        'changed': time.time() - reactor.cluster.changed},
-                            'rules': []}
-
-                rules = {}
-                for rule in reactor.loader:
-                    running = None
-                    if rule.locator in reactor.cluster.meta['executing']:
-                        running = time.time() - reactor.cluster.meta['executing'][rule.locator]
-                    rule_job = reactor.scheduler.get_job(rule.locator)
-                    rule = {'locator': rule.locator,
-                            'running': running,
-                            'time_taken': rule.data.time_taken,
-                            'next_run': dt_to_ts(rule_job.next_run_time) if rule_job else None,
-                            'loaded_at': dt_to_ts(rule.conf('loaded_at')),
-                            'disabled_at': None}
-                    rules[rule['locator']] = rule
-                for rule in reactor.loader.disabled():
-                    rule = {'locator': rule.locator,
-                            'running': None,
-                            'time_taken': rule.data.time_taken,
-                            'next_run': None,
-                            'loaded_at': dt_to_ts(rule.conf('loaded_at')),
-                            'disabled_at': dt_to_ts(rule.conf('disabled_at'))}
-                    rules[rule['locator']] = rule
-
-                response['rules'].extend(rules.values())
+                response = reactor.status()
             else:
                 return self.send_error(404, 'Not Found')
 

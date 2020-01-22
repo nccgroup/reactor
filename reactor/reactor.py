@@ -195,6 +195,7 @@ class Reactor(object):
                                executor='default')
         self.scheduler.start()
         remaining = None
+        status_time = 0
 
         while self.running:
             # If an end time was specified and it has elapsed
@@ -208,11 +209,53 @@ class Reactor(object):
                         remaining = [r.locator for r in filter(lambda r: not r.data.has_run_once, self.loader)]
                         reactor_logger.info('Reached end time, waiting rules to run once: %s', remaining)
 
+            # Every couple of seconds write the status to current working directory
+            if time.time() - status_time >= 2:
+                status_time = time.time()
+                with open('status.json', 'w') as fh:
+                    import json
+                    json.dump(self.status(), fh, indent=2, sort_keys=True)
+
             # Briefly sleep
             time.sleep(0.1)
 
         reactor_logger.info('Goodbye')
         return 0
+    
+    def status(self) -> dict:
+        """ Generate a dictionary containing basic status information. """
+        status = {'time': time.time(),
+                  'up_time': time.time() - self.up_time,
+                  'cluster': {'size': len(self.cluster.neighbourhood),
+                              'leader': self.cluster.leader,
+                              'neighbourhood': list(self.cluster.neighbourhood),
+                              'changed': time.time() - self.cluster.changed},
+                  'rules': []}
+
+        rules = {}
+        for rule in self.loader:
+            running = None
+            if rule.locator in self.cluster.meta['executing']:
+                running = time.time() - self.cluster.meta['executing'][rule.locator]
+            rule_job = self.scheduler.get_job(rule.locator)
+            rule = {'locator': rule.locator,
+                    'running': running,
+                    'time_taken': rule.data.time_taken,
+                    'next_run': dt_to_ts(rule_job.next_run_time) if rule_job else None,
+                    'loaded_at': dt_to_ts(rule.conf('loaded_at')),
+                    'disabled_at': None}
+            rules[rule['locator']] = rule
+        for rule in self.loader.disabled():
+            rule = {'locator': rule.locator,
+                    'running': None,
+                    'time_taken': rule.data.time_taken,
+                    'next_run': None,
+                    'loaded_at': dt_to_ts(rule.conf('loaded_at')),
+                    'disabled_at': dt_to_ts(rule.conf('disabled_at'))}
+            rules[rule['locator']] = rule
+        status['rules'].extend(rules.values())
+
+        return status
 
     def handle_signal(self, signal_num, _):
         if hasattr(signal, 'SIGINFO') and signal_num == signal.SIGINFO:
