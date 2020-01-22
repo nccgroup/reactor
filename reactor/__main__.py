@@ -400,7 +400,7 @@ def perform_run(config: dict, args: dict) -> int:
             return exit_code
 
 
-def main(args: list = None):
+def main(args: list = None) -> int:
     args = args or sys.argv[1:]
     signal.signal(signal.SIGINT, handle_signal)
 
@@ -460,4 +460,4 @@ def main(args: list = None):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))
