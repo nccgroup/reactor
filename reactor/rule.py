@@ -770,10 +770,10 @@ class Rule(object):
 
             # Add the compound keys
             if self.conf('compound_query_key'):
-                values = [dots_get(hit['_source'], key) for key in self.conf('compound_query_key')]
+                values = [dots_get(hit['_source'], key, '') for key in self.conf('compound_query_key')]
                 hit['_source'][self.conf('query_key')] = ','.join(values)
             if self.conf('compound_aggregation_key'):
-                values = [dots_get(hit['_source'], key) for key in self.conf('compound_aggregation_key')]
+                values = [dots_get(hit['_source'], key, '') for key in self.conf('compound_aggregation_key')]
                 hit['_source'][self.conf('aggregation_key')] = ','.join(values)
 
             processed_hits.append(hit['_source'])
@@ -1810,7 +1810,7 @@ class MetricAggregationRule(BaseAggregationRule):
                 match_data[self.metric_key] = metric_val
 
                 # Add compound key to payload to allow alerts to trigger for every unique occurrence
-                compound_value = [match_data[key] for key in self._conf['compound_query_key']]
+                compound_value = [match_data.get(key, '') for key in self._conf['compound_query_key']]
                 match_data[self._conf['query_key']] = ','.join(compound_value)
 
                 extra = {'num_events': 1,
