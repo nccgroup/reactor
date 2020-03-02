@@ -196,6 +196,12 @@ class Rule(object):
     def _working_data(self):
         return WorkingData(self.conf('timestamp_field', '@timestamp'))
 
+    def __getstate__(self):
+        """ Remove elasticsearch client from pickling since it doesn't tolerate ``fork`` very well. """
+        state = self.__dict__
+        state['_es_client'] = None
+        return state
+
     def __eq__(self, other):
         return self._hash == other
 
