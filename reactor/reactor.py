@@ -59,13 +59,10 @@ class Reactor(object):
         self.loader = conf['loader']  # type: RuleLoader
         self.reload = False
 
-        self.es_client = elasticsearch_client(conf['elasticsearch'])
+        self._version_warning = False
+        self._es_client = None
         self.writeback_index = conf['writeback_index']
         self.alert_alias = conf['alert_alias']
-
-        if self.es_client.client_version[0] != self.es_client.es_version[0]:
-            reactor_logger.warning('Major versions do not match between elasticsearch-py %s and cluster %s',
-                                   self.es_client.client_version, self.es_client.es_version)
 
         self.up_time = 0
         self.start_time = args.get('start', dt_now())
@@ -91,6 +88,23 @@ class Reactor(object):
                              'rules': []}
 
         self._configure_schedule()
+
+    def __getstate__(self):
+        """ Remove elasticsearch client from pickling since it doesn't tolerate ``fork`` very well. """
+        state = self.__dict__
+        state['_es_client'] = None
+        return state
+
+    @property
+    def es_client(self):
+        """ Lazy creation of the elasticsearch client since it doesn't tolerate ``fork`` very well. """
+        if self._es_client is None:
+            self._es_client = elasticsearch_client(self.conf['elasticsearch'])
+        if not self._version_warning and self._es_client.client_version[0] != self._es_client.es_version[0]:
+            self._version_warning = True
+            reactor_logger.warning('Major versions do not match between elasticsearch-py %s and cluster %s',
+                                   self._es_client.client_version, self._es_client.es_version)
+        return self._es_client
 
     @property
     def running(self) -> bool:
@@ -637,6 +651,7 @@ class Core(object):
             else:
                 return self.es_client.index(id=doc_id, index=index, doc_type=doc_type, body=writeback_body)
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             reactor_logger.exception('Error writing alert info to ElasticSearch: %s', e)
 
     def flush_writeback(self):
@@ -659,6 +674,7 @@ class Core(object):
             try:
                 hits_terms = rule.get_hits_terms(start_time, end_time, index, key, qk, number)
             except QueryException as e:
+                self._es_client = None
                 self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query}, rule=rule)
                 hits_terms = None
 
@@ -839,6 +855,7 @@ class Core(object):
             if len(res['hits']['hits']) == 0:
                 return None
         except (KeyError, elasticsearch.ElasticsearchException) as e:
+            self._es_client = None
             self.handle_error("Error searching for pending aggregated matches: %s" % e, {'rule': rule.name}, rule=rule)
             return None
 
@@ -933,6 +950,7 @@ class Core(object):
                     reactor_logger.info('Found expired previous run for %s at %s', rule.name, end_time)
                     return None
         except (elasticsearch.ElasticsearchException, KeyError) as e:
+            self._es_client = None
             self.handle_error('Error querying for last run: %s' % e, {'rule': rule.name}, rule=rule)
             return None
 
@@ -995,6 +1013,7 @@ class Core(object):
                                        _source_include=[timestamp_field], ignore_unavailable=True)
         except elasticsearch.ElasticsearchException as e:
             # An exception was raised, return a date before the epoch
+            self._es_client = None
             self.handle_error("Elasticsearch query error: %s" % str(e), {'index': index, 'query': query})
             return '1969-12-30T00:00:00Z'
         if len(res['hits']['hits']) == 0:
@@ -1055,6 +1074,7 @@ class Core(object):
                 res = self.es_client.search(index=index, doc_type='reactor_silence',
                                             size=1, body=query, _source_include=['until', 'exponent'])
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             self.handle_error('Error while querying for alert silence status: %s' % e, {'rule': rule.name}, rule=rule)
             return None
         else:
@@ -1107,6 +1127,7 @@ class Core(object):
                         data = rule.remove_duplicate_events(data)
                         rule.data.num_duplicates += old_len - len(data)
             except QueryException as e:
+                self._es_client = None
                 self.handle_error('Error running query: %s' % str(e), {'rule': rule.name, 'query': e.query}, rule=rule)
                 return []
 
@@ -1341,6 +1362,7 @@ class Core(object):
         try:
             rule.data = self.run_rule(rule, end_time, rule.data.start_time)
         except ReactorException as e:
+            self._es_client = None
             self.handle_error('Error running rule %s: %s' % (rule.name, e), {'rule': rule.name}, rule=rule)
         else:
             old_start_time = pretty_ts(rule.data.start_time, rule.conf('use_local_time'))
@@ -1395,6 +1417,7 @@ class Core(object):
             if res['hits']['hits']:
                 return res['hits']['hits']
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             reactor_logger.exception('Error finding recent pending alerts: %s %s', e, query)
         return []
 
@@ -1415,6 +1438,7 @@ class Core(object):
             for match in res['hits']['hits']:
                 matches.append(match['_source'])
         except (KeyError, elasticsearch.ElasticsearchException) as e:
+            self._es_client = None
             self.handle_error('Error fetching aggregated matches: %s' % e, {'id': '_id'})
         return matches
 

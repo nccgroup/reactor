@@ -601,6 +601,7 @@ class Rule(object):
                     raise elasticsearch.ElasticsearchException(str(res['_shard']['failures']))
 
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             # ElasticSearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
@@ -653,6 +654,7 @@ class Rule(object):
         try:
             res = self.es_client.count(index=index, doc_type=self.conf('doc_type'), body=query, ignore_unavailable=True)
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             # ElasticSearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
@@ -697,6 +699,7 @@ class Rule(object):
                                         body=query, size=0, ignore_unavailable=True)
 
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             # ElasticSearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
@@ -729,6 +732,7 @@ class Rule(object):
                                         body=query, size=0, ignore_unavailable=True)
 
         except elasticsearch.ElasticsearchException as e:
+            self._es_client = None
             # ElasticSearch sometimes gives us GIGANTIC error messages
             # (so big that they will fill the entire terminal buffer)
             if len(str(e)) > 1024:
