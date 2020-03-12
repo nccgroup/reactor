@@ -130,7 +130,7 @@ class RuleLoader(object):
                 if rule.name in names:
                     raise ReactorException('Duplicate rule named %s' % rule.name)
             except ReactorException as e:
-                raise ReactorException('Error loading rule: %s: %s' % (locator, e))
+                raise ReactorException('Error loading rule. %s' % e)
 
             # Does this rule already exist, copy over some properties
             if self.rules.get(locator):
@@ -239,7 +239,7 @@ class RuleLoader(object):
         try:
             self.rule_schema.validate(conf)
         except jsonschema.ValidationError as e:
-            raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
+            raise ConfigException.from_jsonschema_validation_error(conf['rule_id'], e)
 
         # Convert rule type into Rule object
         rule_type = import_class(conf['type'], self.mappings['rule'], reactor.rule)
@@ -250,7 +250,7 @@ class RuleLoader(object):
         try:
             _validator(rule_type.schema_file()).validate(conf)
         except jsonschema.ValidationError as e:
-            raise ConfigException('Invalid rule configuration: %s\n%s' % (conf['rule_id'], e))
+            raise ConfigException.from_jsonschema_validation_error(conf['rule_id'], e)
         except Exception as e:
             print(str(e))
 
@@ -338,7 +338,7 @@ class RuleLoader(object):
                 try:
                     _validator(alerter_class.schema_file()).validate(alerter_conf)
                 except jsonschema.ValidationError as e:
-                    raise ConfigException('Invalid rule configuration: %s\n%s' % (rule.locator, e))
+                    raise ConfigException.from_jsonschema_validation_error(rule.locator, e)
                 alerters.append(alerter_class(rule, alerter_conf))
         rule.alerters = alerters
 

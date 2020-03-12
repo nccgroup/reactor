@@ -6,7 +6,23 @@ class ReactorException(Exception):
 
 class ConfigException(ReactorException):
     """ Reactor raises ConfigExceptions when loaded configuration files are invalid. """
-    pass
+    @staticmethod
+    def from_jsonschema_validation_error(filename, error):
+        message = f'Invalid configuration "{filename}" '
+        if error.validator == 'oneOf':
+            if not error.path:
+                message += f"""Config must have one and only one of {error.schema['oneOf']}"""
+            else:
+                message += f"""property '{'.'.join(error.path)}' must be one and only one of {error.schema['oneOf']}"""
+        elif error.validator == 'anyOf':
+            message += f"""property '{'.'.join(error.path)}' must be any of {error.schema['anyOf']}"""
+        elif error.validator == 'type':
+            message += f"""property '{'.'.join(error.path)}' with value {error.message}"""
+        elif error.validator == 'required':
+            message += f"""{error.message}"""
+        else:
+            message += f"""{error.message} - {error.validator}"""
+        return ConfigException(message)
 
 
 class QueryException(ReactorException):

@@ -75,7 +75,7 @@ def parse_config(filename: str, args: dict, defaults: dict = None, overwrites: d
     try:
         _config_schema().validate(conf)
     except jsonschema.ValidationError as e:
-        raise reactor.ReactorException('Invalid config file "%s":\n%s' % (filename, e))
+        raise reactor.ConfigException.from_jsonschema_validation_error(filename, e)
 
     # Set mapping defaults
     conf.setdefault('mappings', {})
@@ -95,7 +95,7 @@ def parse_config(filename: str, args: dict, defaults: dict = None, overwrites: d
         try:
             rule_loader_class.conf_schema.validate(loader_config)
         except jsonschema.ValidationError as e:
-            raise reactor.ReactorException("Invalid loader config: %s\n%s" % (filename, e))
+            raise reactor.ConfigException.from_jsonschema_validation_error(filename, e)
     conf['loader'] = rule_loader_class(loader_config, rule_defaults, conf['mappings'])
 
     return conf
