@@ -398,6 +398,12 @@ def perform_run(config: dict, args: dict) -> int:
         # If reactor did not receive an SIGHUP reload signal
         if not reactor.reload:
             return exit_code
+        # Otherwise, reload the config file
+        else:
+            try:
+                config = parse_config(args['config'], args)
+            except ConfigException as e:
+                reactor_logger.error(f'Keeping current config: {e}')
 
 
 def main(args: list = None) -> int:
