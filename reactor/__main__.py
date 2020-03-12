@@ -421,7 +421,7 @@ def main(args: list = None) -> int:
     # Increase the APScheduler logging level to show only error/critical
     logging.getLogger('apscheduler').setLevel(logging.ERROR)
 
-    if args['disable_warnings']:
+    if args.get('disable_warnings'):
         urllib3.disable_warnings()
 
     try:
