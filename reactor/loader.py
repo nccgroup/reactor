@@ -86,7 +86,7 @@ class RuleLoader(object):
         """ Enable the rule. """
         rule = self._disabled.pop(locator, None)
         if rule is not None:
-            rule.set_conf('disabled_at', dt_now())
+            rule.set_conf('disabled_at', None)
 
     def disabled(self) -> Iterator[Rule]:
         """ Returns an iterator of all rules disabled because of an uncaught exception while running. """
@@ -116,7 +116,9 @@ class RuleLoader(object):
             if self.rules.get(locator) and self.rules[locator].hash == self.get_hash(locator):
                 rules[locator] = self.rules[locator]
                 continue
-            elif self.rules.get(locator) or locator in self._disabled:
+            elif locator in self._disabled:
+                reactor_logger.info('Enabling updated rule "%s"', locator)
+            elif self.rules.get(locator):
                 reactor_logger.info('Updating rule "%s"', locator)
             else:
                 reactor_logger.log(logging.INFO if self.loaded else logging.DEBUG, 'Loaded rule "%s"', locator)
