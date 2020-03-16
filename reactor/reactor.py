@@ -537,7 +537,7 @@ class Reactor(object):
 
         if rule.conf('disable_rule_on_error'):
             self.loader.disable(rule.locator)
-            if self.running and self.scheduler.get_job(job_id=rule.locator):
+            if self.scheduler.get_job(job_id=rule.locator):
                 self.scheduler.remove_job(job_id=rule.locator)
             reactor_logger.info('Rule "%s" disabled', rule.name)
         if self.conf['notifiers']:
@@ -1501,10 +1501,12 @@ class FixedProcessPoolExecutor(_ProcessPoolExecutor):
     """
     def __init__(self, max_workers=10):
         self._max_workers = max_workers
+        self._store = dict()
         super().__init__(max_workers)
 
     def _do_submit_job(self, job, run_times):
         try:
+            self._store[job.id] = (job._jobstore_alias, run_times)
             return super()._do_submit_job(job, run_times)
         except BrokenProcessPool:
             self._logger.warning('Process pool is broken. Restarting executor.')
@@ -1512,3 +1514,30 @@ class FixedProcessPoolExecutor(_ProcessPoolExecutor):
             self._pool = ProcessPoolExecutor(int(self._max_workers))
 
             return super()._do_submit_job(job, run_times)
+
+    def _run_job_success(self, job_id, events):
+        # Call to handle job success as normal
+        super()._run_job_success(job_id, events)
+
+        # Tidy up the store
+        self._store.pop(job_id, None)
+
+    def _run_job_error(self, job_id, exc, traceback=None):
+        # Call to handle job error as normal
+        super()._run_job_error(job_id, exc, traceback)
+
+        # Fire an event to say the job failed
+        jobstore, run_times = self._store.get(job_id, ('default', [dt_now()]))
+        event = apscheduler.events.JobExecutionEvent(apscheduler.events.EVENT_JOB_ERROR, job_id,
+                                                     jobstore, run_times[0],
+                                                     exception=exc, traceback=traceback)
+        self._scheduler._dispatch_event(event)
+
+        # If this was a BrokenProcessPool exception
+        if isinstance(exc, BrokenProcessPool):
+            self._logger.warning('Process pool broke during execution. Restarting executor.')
+            self._pool.shutdown(wait=True)
+            self._pool = ProcessPoolExecutor(int(self._max_workers))
+
+        # Tidy up the store
+        self._store.pop(job_id, None)
