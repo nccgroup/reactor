@@ -268,7 +268,7 @@ class Rule(object):
     @property
     def es_client(self) -> ElasticSearchClient:
         if self._es_client is None:
-            self.es_client = elasticsearch_client(self.conf('elasticsearch'))
+            self._es_client = elasticsearch_client(self.conf('elasticsearch'))
         return self._es_client
 
     @es_client.setter
