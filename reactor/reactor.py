@@ -92,7 +92,7 @@ class Reactor(object):
     def __getstate__(self):
         """ Remove elasticsearch client from pickling since it doesn't tolerate ``fork`` very well. """
         state = self.__dict__.copy()
-        del state['_es_client']
+        state['_es_client'] = None
         return state
 
     @property
@@ -590,7 +590,7 @@ class Core(object):
     def __getstate__(self):
         """ Remove elasticsearch client from pickling since it doesn't tolerate ``fork`` very well. """
         state = self.__dict__.copy()
-        del state['_es_client']
+        state['_es_client'] = None
         return state
 
     @property
