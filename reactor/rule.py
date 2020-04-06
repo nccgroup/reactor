@@ -198,8 +198,8 @@ class Rule(object):
 
     def __getstate__(self):
         """ Remove elasticsearch client from pickling since it doesn't tolerate ``fork`` very well. """
-        state = self.__dict__
-        state['_es_client'] = None
+        state = self.__dict__.copy()
+        del state['_es_client']
         return state
 
     def __eq__(self, other):
@@ -267,14 +267,21 @@ class Rule(object):
 
     @property
     def es_client(self) -> ElasticSearchClient:
+        """ Lazy creation of the elasticsearch client since it doesn't tolerate ``fork`` very well. """
         if self._es_client is None:
-            self._es_client = elasticsearch_client(self.conf('elasticsearch'))
+            self._set_es_client(elasticsearch_client(self.conf('elasticsearch')))
         return self._es_client
 
     @es_client.setter
     def es_client(self, value: reactor.util.ElasticSearchClient) -> None:
         if self._es_client is not None:
             raise Exception('Not allowed to be overridden')
+        self._set_es_client(value)
+
+    def _set_es_client(self, value: reactor.util.ElasticSearchClient) -> None:
+        """
+        Alter the config to prepare to execution based on the Elasticsearch version.
+        """
         self._es_client = value
 
         # In ElasticSearch >= v5.x, filters starting with query should have the top wrapper removed
