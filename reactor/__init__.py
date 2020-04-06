@@ -1,4 +1,4 @@
-__version__ = '1.2.7'
+__version__ = '1.2.8'
 __author__ = 'Peter Scopes'
 
 from reactor.alerter import (
