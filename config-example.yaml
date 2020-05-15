@@ -37,6 +37,12 @@ alert_alias: alerts
 
 # The maximum number of workers that the process pool may have. Defaults to
 # the result of multiprocessing.cpu_count()
+# WARNING: multiprocessing.cpu_count() does not support cgroups limit on CPU allocation
+#          which means max_processes pool will need to be manually set (for example AWS
+#          ECS tasks with CPU units is not supported).
+#          See:
+#            * https://bugs.python.org/issue36054
+#            * https://bugs.python.org/issue26692
 #max_processpool: 0
 
 # The configuration for a Reactor cluster. `host` should be the hostname and port
