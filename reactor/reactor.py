@@ -1191,7 +1191,7 @@ class Core(object):
             '_index': self.get_writeback_index('silence'),
             '_type': '_doc' if self.es_client.es_version_at_least(6) else 'reactor_silence',
             '_id': hit['_id'],
-        } for hit in res['hits']['hits']])
+        } for hit in res['hits']['hits']], stats_only=True, raise_on_error=False)
         list(map(rule.data.alerts_cache.pop,
                  [s['_source']['alert_uuid'] for s in res['hits']['hits']],
                  [None] * len(res['hits']['hits'])))
