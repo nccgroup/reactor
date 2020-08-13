@@ -142,3 +142,10 @@ $ pip install -r requirements-docs.txt
 $ cd docs
 $ sphinx-build -b html -d build/doctrees -W source build/html
 ```
+
+## Publish to PyPi
+1.  `pip install --upgrade setuptools wheel`
+2.  `pip install --upgrade twine`
+3.  `python3 setup.py sdist bdist_wheel`
+4.  `twine check dist/*`
+5.  `twine upload --skip-existing dist/*  --verbose`

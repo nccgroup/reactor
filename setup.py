@@ -6,7 +6,7 @@ with open('README.md', 'r') as fh:
 with open('requirements.txt', 'r') as fh:
     install_requirements = fh.read().split()
 setuptools.setup(
-    name='reactor',
+    name='ncc-reactor',
     version='1.2.9',
     author='Peter Scopes',
     author_email='peter.scopes@nccgroup.com',
