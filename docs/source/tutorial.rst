@@ -21,7 +21,7 @@ You can either install the latest released version of Reactor using pip::
 
 or you can clone the Reactor repository for the most recent changes::
 
-    $ git clone https://git-man-dev.nccgroup.local/reactlive/reactor.git
+    $ git clone https://github.com/nccgroup/reactor.git
 
 Install the module::
 
